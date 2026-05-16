@@ -1,0 +1,13 @@
+{
+  "name": "prog-strength-agent-release",
+  "private": true,
+  "description": "Release tooling for the Prog Strength Agent service. The application itself is Python; this package.json exists only to install semantic-release and its plugins.",
+  "scripts": {
+    "release": "semantic-release"
+  },
+  "devDependencies": {
+    "@semantic-release/changelog": "^6.0.3",
+    "@semantic-release/git": "^10.0.1",
+    "semantic-release": "^24.2.0"
+  }
+}

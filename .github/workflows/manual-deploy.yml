@@ -1,0 +1,90 @@
+name: Manual Deploy
+
+# Operator-initiated deploy of an existing tag. Use this when release.yml
+# can't help — primarily when prog-strength-infra has provisioned a fresh
+# EC2 host and you need to bring services up against the currently-released
+# version without manufacturing a fake feat/fix commit just to trigger
+# semantic-release. The deploy logic is intentionally a copy of the deploy
+# job in release.yml; keep them in sync until they're worth refactoring
+# into a reusable workflow.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Tag to deploy (e.g. 0.1.0 or v0.1.0). Leave blank for the latest tag.'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+# Share the concurrency group with release.yml so a manual deploy can't
+# race with an automatic release+deploy.
+concurrency:
+  group: release-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Need full history + all tags so `git tag --sort=-version:refname`
+          # below can find the latest released version.
+          fetch-depth: 0
+
+      - name: Resolve version
+        id: resolve
+        run: |
+          set -e
+          v_input='${{ inputs.version }}'
+          if [ -n "$v_input" ]; then
+            v="$v_input"
+          else
+            v="$(git tag --list 'v*' --sort=-version:refname | head -n1)"
+          fi
+          if [ -z "$v" ]; then
+            echo "No version provided and no v* tags found in the repository."
+            exit 1
+          fi
+          # Normalize to "0.1.0" (no leading v) so the env-substitution in
+          # the SSH script below matches release.yml's RELEASE_VERSION shape.
+          v="${v#v}"
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          echo "Resolved version: v$v"
+
+      - name: Deploy tagged version to EC2
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          JWT_SIGNING_KEY: ${{ secrets.JWT_SIGNING_KEY }}
+          RELEASE_VERSION: ${{ steps.resolve.outputs.version }}
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ubuntu
+          key: ${{ secrets.EC2_SSH_KEY }}
+          envs: ANTHROPIC_API_KEY,JWT_SIGNING_KEY,RELEASE_VERSION
+          script: |
+            # Abort on the first failing command — see release.yml for the
+            # full rationale on why this matters with appleboy/ssh-action.
+            set -e
+
+            cd /home/ubuntu/prog-strength-agent
+            git fetch --tags --prune
+            git checkout "v${RELEASE_VERSION}"
+
+            umask 077
+            cat > .env <<EOF
+            ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+            JWT_SIGNING_KEY=${JWT_SIGNING_KEY}
+            APP_VERSION=v${RELEASE_VERSION}
+            EOF
+
+            docker compose down
+            docker compose up --build -d
+
+            echo "Deployed v${RELEASE_VERSION}"
+            docker compose ps
+            docker compose logs --tail=50
