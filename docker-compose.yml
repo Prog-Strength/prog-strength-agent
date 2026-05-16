@@ -1,0 +1,42 @@
+services:
+  agent:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    # No public `ports:` — Caddy (in the prog-strength-api stack) is the
+    # only public-facing container. Caddy reaches us at `agent:8001` via
+    # the shared docker network.
+    expose:
+      - "8001"
+    environment:
+      # MCP lives in the same shared docker network — talk to it by
+      # service name rather than over the public Caddy hop.
+      - PROG_STRENGTH_MCP_URL=http://mcp:8000/mcp
+      - AGENT_HOST=0.0.0.0
+      - AGENT_PORT=8001
+      # Forwarded from .env, which the deploy workflow writes from
+      # GitHub repository secrets on each release.
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - JWT_SIGNING_KEY=${JWT_SIGNING_KEY}
+      # Optional overrides; the agent's Config falls back to sensible
+      # defaults if these are absent.
+      - CLAUDE_MODEL=${CLAUDE_MODEL:-claude-opus-4-7}
+      - CLAUDE_MAX_TOKENS=${CLAUDE_MAX_TOKENS:-2048}
+      # Released semver (e.g. "v0.1.0"), surfaced by the /health endpoint.
+      # Defaults to "dev" for local `docker compose up` without a release.
+      - APP_VERSION=${APP_VERSION:-dev}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request, sys; urllib.request.urlopen('http://localhost:8001/health', timeout=2)"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+
+# Join the shared network the api + mcp + caddy live on. `external: true`
+# means docker compose won't try to create or destroy it — the host owns
+# its lifecycle (bootstrap.sh creates it on fresh hosts).
+networks:
+  default:
+    name: prog-strength
+    external: true

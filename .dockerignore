@@ -1,0 +1,29 @@
+# VCS
+.git
+.gitignore
+
+# Python build artifacts
+.venv
+__pycache__
+*.py[cod]
+*.egg-info
+.pytest_cache
+.ruff_cache
+.mypy_cache
+dist
+build
+
+# Local env
+.env
+.env.local
+
+# Editor / OS
+.idea
+.vscode
+.DS_Store
+
+# Repo metadata not needed at runtime
+.github
+.env.example
+# Note: README.md is NOT excluded — hatchling reads `readme = "README.md"`
+# from pyproject.toml at build time and errors if the file is missing.
