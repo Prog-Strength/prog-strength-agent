@@ -1,3 +1,10 @@
+## [0.2.1](https://github.com/Prog-Strength/prog-strength-agent/compare/v0.2.0...v0.2.1) (2026-05-17)
+
+
+### Bug Fixes
+
+* **chat:** strip output-only fields from assistant content for replay ([6f3089f](https://github.com/Prog-Strength/prog-strength-agent/commit/6f3089fa65582a96b05951a30f491291bd0b99eb))
+
 # [0.2.0](https://github.com/Prog-Strength/prog-strength-agent/compare/v0.1.0...v0.2.0) (2026-05-17)
 
 
