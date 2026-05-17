@@ -22,6 +22,9 @@ services:
       # defaults if these are absent.
       - CLAUDE_MODEL=${CLAUDE_MODEL:-claude-opus-4-7}
       - CLAUDE_MAX_TOKENS=${CLAUDE_MAX_TOKENS:-2048}
+      # Comma-separated origins allowed to call /chat from the browser.
+      # The frontend lives on Vercel, so cross-origin CORS is required.
+      - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-}
       # Released semver (e.g. "v0.1.0"), surfaced by the /health endpoint.
       # Defaults to "dev" for local `docker compose up` without a release.
       - APP_VERSION=${APP_VERSION:-dev}

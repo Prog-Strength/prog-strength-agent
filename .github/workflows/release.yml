@@ -52,12 +52,13 @@ jobs:
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           JWT_SIGNING_KEY: ${{ secrets.JWT_SIGNING_KEY }}
+          CORS_ALLOWED_ORIGINS: ${{ secrets.CORS_ALLOWED_ORIGINS }}
           RELEASE_VERSION: ${{ needs.release.outputs.new_release_version }}
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ubuntu
           key: ${{ secrets.EC2_SSH_KEY }}
-          envs: ANTHROPIC_API_KEY,JWT_SIGNING_KEY,RELEASE_VERSION
+          envs: ANTHROPIC_API_KEY,JWT_SIGNING_KEY,CORS_ALLOWED_ORIGINS,RELEASE_VERSION
           script: |
             # Abort on the first failing command. Without this, a failed
             # `docker compose up --build` is followed by trailing `ps` /
@@ -82,6 +83,7 @@ jobs:
             cat > .env <<EOF
             ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
             JWT_SIGNING_KEY=${JWT_SIGNING_KEY}
+            CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS}
             APP_VERSION=v${RELEASE_VERSION}
             EOF
 

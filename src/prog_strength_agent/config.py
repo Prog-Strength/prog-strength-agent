@@ -15,6 +15,7 @@ class Config:
     port: int
     claude_model: str
     max_tokens: int
+    cors_allowed_origins: tuple[str, ...]
 
     @classmethod
     def from_env(cls) -> "Config":
@@ -32,6 +33,14 @@ class Config:
                 "incoming user JWTs validate."
             ) from e
 
+        # Comma-separated list of origins permitted by CORS. The frontend
+        # is hosted on Vercel so /chat is always cross-origin; without
+        # this the browser blocks the request before it ever leaves.
+        cors_raw = os.environ.get("CORS_ALLOWED_ORIGINS", "")
+        cors_allowed_origins = tuple(
+            o.strip() for o in cors_raw.split(",") if o.strip()
+        )
+
         return cls(
             anthropic_api_key=anthropic_api_key,
             jwt_signing_key=jwt_signing_key,
@@ -43,4 +52,5 @@ class Config:
             port=int(os.environ.get("AGENT_PORT", "8001")),
             claude_model=os.environ.get("CLAUDE_MODEL", "claude-opus-4-7"),
             max_tokens=int(os.environ.get("CLAUDE_MAX_TOKENS", "2048")),
+            cors_allowed_origins=cors_allowed_origins,
         )
