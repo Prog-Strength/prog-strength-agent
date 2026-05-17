@@ -1,3 +1,10 @@
+# [0.4.0](https://github.com/Prog-Strength/prog-strength-agent/compare/v0.3.0...v0.4.0) (2026-05-17)
+
+
+### Features
+
+* **model:** default to Sonnet 4.6 instead of Opus 4.7 ([4c3e23d](https://github.com/Prog-Strength/prog-strength-agent/commit/4c3e23df9ec8a1ae234b091b5618850d034ac357))
+
 # [0.3.0](https://github.com/Prog-Strength/prog-strength-agent/compare/v0.2.1...v0.3.0) (2026-05-17)
 
 
