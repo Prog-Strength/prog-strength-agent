@@ -50,7 +50,7 @@ class Config:
             mcp_url=os.environ.get("PROG_STRENGTH_MCP_URL", "http://mcp:8000/mcp"),
             host=os.environ.get("AGENT_HOST", "0.0.0.0"),
             port=int(os.environ.get("AGENT_PORT", "8001")),
-            claude_model=os.environ.get("CLAUDE_MODEL", "claude-opus-4-7"),
+            claude_model=os.environ.get("CLAUDE_MODEL", "claude-sonnet-4-6"),
             max_tokens=int(os.environ.get("CLAUDE_MAX_TOKENS", "2048")),
             cors_allowed_origins=cors_allowed_origins,
         )

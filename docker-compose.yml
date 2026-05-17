@@ -20,7 +20,7 @@ services:
       - JWT_SIGNING_KEY=${JWT_SIGNING_KEY}
       # Optional overrides; the agent's Config falls back to sensible
       # defaults if these are absent.
-      - CLAUDE_MODEL=${CLAUDE_MODEL:-claude-opus-4-7}
+      - CLAUDE_MODEL=${CLAUDE_MODEL:-claude-sonnet-4-6}
       - CLAUDE_MAX_TOKENS=${CLAUDE_MAX_TOKENS:-2048}
       # Comma-separated origins allowed to call /chat from the browser.
       # The frontend lives on Vercel, so cross-origin CORS is required.

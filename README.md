@@ -38,7 +38,7 @@ user → frontend → POST /chat → AGENT ─→ Claude (tools=[…])
 | `PROG_STRENGTH_MCP_URL`     | no       | `http://mcp:8000/mcp`    | In prod this resolves over the shared docker network.                |
 | `AGENT_HOST`                | no       | `0.0.0.0`                |                                                                      |
 | `AGENT_PORT`                | no       | `8001`                   |                                                                      |
-| `CLAUDE_MODEL`              | no       | `claude-opus-4-7`        | Any Anthropic model id.                                              |
+| `CLAUDE_MODEL`              | no       | `claude-sonnet-4-6`      | Any Anthropic model id. Default is Sonnet 4.6 — strong tool-use behavior at a fraction of Opus pricing. |
 | `CLAUDE_MAX_TOKENS`         | no       | `2048`                   | Per-turn cap.                                                        |
 
 ## Local development
