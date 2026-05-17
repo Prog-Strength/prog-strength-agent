@@ -1,3 +1,10 @@
+# [0.5.0](https://github.com/Prog-Strength/prog-strength-agent/compare/v0.4.0...v0.5.0) (2026-05-17)
+
+
+### Features
+
+* tiered model routing (Haiku default, Sonnet on complex) ([c009faf](https://github.com/Prog-Strength/prog-strength-agent/commit/c009fafb53dceb7052be95e3ef3b10ba760f9582))
+
 # [0.4.0](https://github.com/Prog-Strength/prog-strength-agent/compare/v0.3.0...v0.4.0) (2026-05-17)
 
 
