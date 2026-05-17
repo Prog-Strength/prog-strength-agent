@@ -18,9 +18,13 @@ services:
       # GitHub repository secrets on each release.
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - JWT_SIGNING_KEY=${JWT_SIGNING_KEY}
-      # Optional overrides; the agent's Config falls back to sensible
-      # defaults if these are absent.
-      - CLAUDE_MODEL=${CLAUDE_MODEL:-claude-sonnet-4-6}
+      # Tiered model routing: simple/complex tiers + a classifier
+      # router. The agent's ModelRouter picks one of the two response
+      # tiers per request. Override these to A/B-test models without
+      # rebuilding the image.
+      - CLAUDE_MODEL_SIMPLE=${CLAUDE_MODEL_SIMPLE:-claude-haiku-4-5-20251001}
+      - CLAUDE_MODEL_COMPLEX=${CLAUDE_MODEL_COMPLEX:-claude-sonnet-4-6}
+      - CLAUDE_MODEL_ROUTER=${CLAUDE_MODEL_ROUTER:-claude-haiku-4-5-20251001}
       - CLAUDE_MAX_TOKENS=${CLAUDE_MAX_TOKENS:-2048}
       # Comma-separated origins allowed to call /chat from the browser.
       # The frontend lives on Vercel, so cross-origin CORS is required.

@@ -13,7 +13,15 @@ class Config:
     mcp_url: str
     host: str
     port: int
-    claude_model: str
+    # Three model slots — see model_router.py for routing logic.
+    # simple_model: cheap/fast tier, serves CRUD-shaped requests.
+    # complex_model: capable tier, serves reasoning/analysis requests.
+    # router_model: classifier that picks between the two above.
+    # All three are typically Claude family ids; nothing stops you
+    # from pointing simple and router at the same model (cheaper).
+    simple_model: str
+    complex_model: str
+    router_model: str
     max_tokens: int
     cors_allowed_origins: tuple[str, ...]
 
@@ -50,7 +58,20 @@ class Config:
             mcp_url=os.environ.get("PROG_STRENGTH_MCP_URL", "http://mcp:8000/mcp"),
             host=os.environ.get("AGENT_HOST", "0.0.0.0"),
             port=int(os.environ.get("AGENT_PORT", "8001")),
-            claude_model=os.environ.get("CLAUDE_MODEL", "claude-sonnet-4-6"),
+            # Tiered model defaults: Haiku for the common case (workout
+            # logging, list operations, exercise lookup), Sonnet for the
+            # uncommon analytical / planning case. Router uses Haiku
+            # because the classification task itself is structured
+            # (single-word output, well-bounded prompt).
+            simple_model=os.environ.get(
+                "CLAUDE_MODEL_SIMPLE", "claude-haiku-4-5-20251001"
+            ),
+            complex_model=os.environ.get(
+                "CLAUDE_MODEL_COMPLEX", "claude-sonnet-4-6"
+            ),
+            router_model=os.environ.get(
+                "CLAUDE_MODEL_ROUTER", "claude-haiku-4-5-20251001"
+            ),
             max_tokens=int(os.environ.get("CLAUDE_MAX_TOKENS", "2048")),
             cors_allowed_origins=cors_allowed_origins,
         )
