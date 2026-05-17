@@ -1,3 +1,10 @@
+# [0.3.0](https://github.com/Prog-Strength/prog-strength-agent/compare/v0.2.1...v0.3.0) (2026-05-17)
+
+
+### Features
+
+* **auth:** Per-request MCP session with user JWT forwarding ([f914e30](https://github.com/Prog-Strength/prog-strength-agent/commit/f914e30cd5ec664aeaf997ffcef89ebdc766f679))
+
 ## [0.2.1](https://github.com/Prog-Strength/prog-strength-agent/compare/v0.2.0...v0.2.1) (2026-05-17)
 
 
