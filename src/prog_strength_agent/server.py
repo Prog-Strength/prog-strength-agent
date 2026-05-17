@@ -1,43 +1,36 @@
 """FastAPI app: /health + /chat (SSE streaming).
 
-Lifespan owns the single persistent MCP ClientSession. /chat runs an
-Anthropic tool-use loop using the SDK's streaming API and forwards
-events to the client as Server-Sent Events:
+Auth model: each /chat request opens its own MCP session whose HTTP
+Authorization header carries the end-user's Bearer JWT. MCP's tool
+handlers read the header and forward it to the API — MCP holds no
+signing key and cannot impersonate users.
 
-    data: {"type": "text_delta", "text": "Hello"}
+Trade-off: handshake cost is paid per /chat turn (typically <300ms,
+dwarfed by Claude latency). In exchange the agent has no
+long-lived auth state and MCP becomes a transparent proxy.
 
-    data: {"type": "tool_use_start", "name": "list_exercises"}
-
-    data: {"type": "tool_result", "name": "list_exercises", "is_error": false}
-
-    data: {"type": "done", "stop_reason": "end_turn"}
-
-The frontend renders text_delta events live, surfaces tool_use_start /
-tool_result as ephemeral indicators, and stops the loading state on
-`done`. Errors mid-stream emit `{"type": "error", "message": "..."}`.
-
-Tool-schema rewrite remains the security-critical bit: `user_id` is
-stripped from every tool's input schema so Claude can't see or influence
-it, and the agent injects the authenticated value (from the JWT's sub
-claim) when forwarding the call to MCP.
+Tool-schema rewrite removed (it existed to strip `user_id` from the
+schema Claude saw; MCP tools no longer take a `user_id` arg, so
+nothing to strip).
 """
 
 import copy
 import json
 import logging
 from collections.abc import AsyncGenerator
-from contextlib import asynccontextmanager
+from contextlib import AsyncExitStack
 from typing import Any
 
 from anthropic import AsyncAnthropic
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
+from mcp import ClientSession
+from mcp.client.streamable_http import streamablehttp_client
 from pydantic import BaseModel
 
-from prog_strength_agent.auth import authenticated_user_id
+from prog_strength_agent.auth import authenticate
 from prog_strength_agent.config import Config
-from prog_strength_agent.mcp_client import MCPClient
 from prog_strength_agent.prompt import SYSTEM_PROMPT
 from prog_strength_agent.version import SERVICE, VERSION
 
@@ -45,10 +38,8 @@ log = logging.getLogger(__name__)
 
 # Single shared state. uvicorn's worker process is long-lived; these get
 # constructed once at import time and reused for the lifetime of the
-# process. MCPClient.connect() and close() are driven by the FastAPI
-# lifespan handler below.
+# process.
 config = Config.from_env()
-mcp_client = MCPClient(config.mcp_url)
 claude = AsyncAnthropic(api_key=config.anthropic_api_key)
 
 # Cap the tool-use loop to keep a runaway Claude from hammering MCP in
@@ -57,16 +48,7 @@ claude = AsyncAnthropic(api_key=config.anthropic_api_key)
 MAX_TOOL_LOOP = 8
 
 
-@asynccontextmanager
-async def lifespan(_: FastAPI):
-    await mcp_client.connect()
-    try:
-        yield
-    finally:
-        await mcp_client.close()
-
-
-app = FastAPI(title=SERVICE, version=VERSION, lifespan=lifespan)
+app = FastAPI(title=SERVICE, version=VERSION)
 
 # CORS for the frontend on Vercel (or wherever). The /chat endpoint is
 # called cross-origin from the browser, so without these headers the
@@ -107,24 +89,21 @@ class ChatRequest(BaseModel):
 async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
     """SSE-stream a chat turn.
 
-    Auth + tool-schema setup happens synchronously so that a 401 or a
-    misconfigured MCP shows up as a normal HTTP status before the
-    stream starts. Once we begin emitting SSE the status is already
-    200 — errors after that point flow through as `{"type":"error"}`
-    events within the stream.
+    Auth happens up-front so a 401 surfaces as a normal HTTP status
+    before the stream begins. Once we yield the first byte the status
+    is locked to 200 — errors after that point flow through as
+    `{"type":"error"}` events inside the stream.
+
+    The MCP session is opened lazily inside the generator (not here)
+    because passing it across the StreamingResponse boundary requires
+    careful lifetime management; an AsyncExitStack inside the
+    generator keeps the open/close logic local and trivially correct.
     """
-    user_id = authenticated_user_id(request, config.jwt_signing_key)
-
-    # Re-fetch tools per request so that adding/removing MCP tools doesn't
-    # require an agent restart. The MCP roundtrip is cheap (same host,
-    # docker network) so the freshness is worth it.
-    mcp_tools = (await mcp_client.list_tools()).tools
-    tools_for_claude, tools_taking_user_id = _build_tool_schemas(mcp_tools)
-
+    auth = authenticate(request, config.jwt_signing_key)
     messages: list[dict[str, Any]] = [m.model_dump() for m in req.messages]
 
     return StreamingResponse(
-        _run_chat_stream(messages, tools_for_claude, tools_taking_user_id, user_id),
+        _run_chat_stream(messages, auth.token),
         media_type="text/event-stream",
         headers={
             # Prevent intermediaries (Caddy, browsers, proxies) from
@@ -138,18 +117,34 @@ async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
 
 async def _run_chat_stream(
     messages: list[dict[str, Any]],
-    tools_for_claude: list[dict[str, Any]],
-    tools_taking_user_id: set[str],
-    user_id: str,
+    user_token: str,
 ) -> AsyncGenerator[bytes, None]:
     """Drive the tool-use loop, yielding SSE-formatted bytes.
 
-    Pure generator: no FastAPI coupling, no Request access. Errors are
-    converted to `{"type":"error"}` events and the stream is closed
-    cleanly rather than raised — once the response status is 200, the
-    only way to communicate failure is in-band.
+    Opens a fresh MCP ClientSession scoped to this single /chat request,
+    with the user's JWT in the Authorization header. MCP's tool handlers
+    read that header via FastMCP's request context and forward it
+    verbatim to the API. The session closes when this generator exits.
     """
+    stack = AsyncExitStack()
     try:
+        # Per-request MCP session. The streamable-HTTP transport carries
+        # the Authorization header through the JSON-RPC handshake; FastMCP
+        # exposes it to tool handlers via get_http_headers.
+        read, write, _ = await stack.enter_async_context(
+            streamablehttp_client(
+                config.mcp_url,
+                headers={"Authorization": f"Bearer {user_token}"},
+            )
+        )
+        session: ClientSession = await stack.enter_async_context(
+            ClientSession(read, write)
+        )
+        await session.initialize()
+
+        mcp_tools = (await session.list_tools()).tools
+        tools_for_claude = _build_tool_schemas(mcp_tools)
+
         for _iteration in range(MAX_TOOL_LOOP):
             assistant_blocks: list[dict[str, Any]] = []
             stop_reason: str | None = None
@@ -164,11 +159,6 @@ async def _run_chat_stream(
                 async for event in stream:
                     if event.type == "content_block_start":
                         block = event.content_block
-                        # When a tool_use block starts, emit a marker so
-                        # the UI can show "Running list_exercises…". The
-                        # tool's actual input arrives via input_json_delta
-                        # events later; we don't need to surface those to
-                        # the UI — the result is what matters.
                         if block.type == "tool_use":
                             yield _sse(
                                 {"type": "tool_use_start", "name": block.name}
@@ -178,18 +168,11 @@ async def _run_chat_stream(
                         if delta.type == "text_delta":
                             yield _sse({"type": "text_delta", "text": delta.text})
 
-                # get_final_message() blocks until the model finishes
-                # streaming and returns the assembled message with all
-                # content blocks materialized — text + tool_use, fully
-                # populated input dicts and all.
                 final = await stream.get_final_message()
                 # Re-serialize with only INPUT-shape fields. The SDK's
                 # response objects carry output-only fields (e.g.
-                # `parsed_output` on text blocks, `citations`) that
-                # Anthropic's API rejects when the same content is
-                # echoed back as part of the messages array. A naive
-                # `model_dump(mode="json")` would include them and the
-                # next turn 400s with `Extra inputs are not permitted`.
+                # `parsed_output` on text blocks) that Anthropic rejects
+                # when echoed back unchanged. See _block_for_replay.
                 assistant_blocks = [_block_for_replay(b) for b in final.content]
                 stop_reason = final.stop_reason
 
@@ -200,34 +183,32 @@ async def _run_chat_stream(
                 return
 
             # Execute every tool_use block from this turn before going
-            # back to Claude. Multiple parallel tool_use blocks are
-            # common for read-only lookups (e.g. list_exercises +
-            # list_workouts in one turn). We iterate the SDK objects
-            # rather than the rewritten dicts so we keep direct access
-            # to the strongly-typed block attributes.
+            # back to Claude. The MCP session was opened with the user's
+            # JWT, so MCP forwards that token to the API on each call;
+            # no user_id injection needed here anymore.
             tool_results: list[dict[str, Any]] = []
             for block in final.content:
                 if block.type != "tool_use":
                     continue
-                name = block.name
-                tool_input = dict(block.input or {})
-                if name in tools_taking_user_id:
-                    # Authoritative injection: whatever Claude sent for
-                    # user_id is replaced with the JWT's sub.
-                    tool_input["user_id"] = user_id
                 try:
-                    result = await mcp_client.call_tool(name, tool_input)
+                    result = await session.call_tool(
+                        block.name, dict(block.input or {})
+                    )
                     text = "\n".join(
                         getattr(c, "text", str(c)) for c in result.content
                     )
                     is_error = bool(result.isError)
                 except Exception as exc:
-                    log.exception("mcp call_tool %s failed", name)
+                    log.exception("mcp call_tool %s failed", block.name)
                     text = f"tool error: {exc}"
                     is_error = True
 
                 yield _sse(
-                    {"type": "tool_result", "name": name, "is_error": is_error}
+                    {
+                        "type": "tool_result",
+                        "name": block.name,
+                        "is_error": is_error,
+                    }
                 )
                 tool_results.append(
                     {
@@ -239,8 +220,6 @@ async def _run_chat_stream(
                 )
             messages.append({"role": "user", "content": tool_results})
 
-        # Exceeded the loop cap — surface in-band, not as a 500, because
-        # we've already sent the 200 status and the response body.
         yield _sse(
             {
                 "type": "error",
@@ -250,6 +229,8 @@ async def _run_chat_stream(
     except Exception as exc:
         log.exception("chat stream failed")
         yield _sse({"type": "error", "message": f"agent error: {exc}"})
+    finally:
+        await stack.aclose()
 
 
 def _sse(payload: dict[str, Any]) -> bytes:
@@ -264,16 +245,10 @@ def _block_for_replay(block: Any) -> dict[str, Any]:
     """Serialize a single Anthropic response content block to the
     input-shape dict that messages.create accepts on a subsequent turn.
 
-    Why this exists: the SDK's response models include output-only
-    fields (e.g. text blocks carry `parsed_output` and `citations`,
-    tool_use blocks may carry stream-bookkeeping metadata) that the
-    Anthropic API rejects with "Extra inputs are not permitted" if you
-    echo them back unchanged. Whitelisting the exact fields the input
-    schema accepts is the only safe path — `model_dump` is too greedy.
-
-    Unknown block types fall back to the SDK's own dump as a
-    best-effort; if Anthropic adds a new block kind we'd rather see a
-    server-side error than silently drop content.
+    The SDK's response models include output-only fields (e.g. text
+    blocks carry `parsed_output` and `citations`) that the Anthropic
+    API rejects on input with "Extra inputs are not permitted". This
+    whitelist sidesteps that.
     """
     if block.type == "text":
         return {"type": "text", "text": block.text}
@@ -287,33 +262,20 @@ def _block_for_replay(block: Any) -> dict[str, Any]:
     return block.model_dump(mode="json")
 
 
-def _build_tool_schemas(
-    mcp_tools: list[Any],
-) -> tuple[list[dict[str, Any]], set[str]]:
+def _build_tool_schemas(mcp_tools: list[Any]) -> list[dict[str, Any]]:
     """Convert MCP tool definitions to Anthropic tool schemas.
 
-    Strips `user_id` from each schema so Claude doesn't see it as a
-    parameter — that field is server-side-authoritative, injected from
-    the validated JWT. Returns the rewritten schemas plus the set of
-    tool names that originally took a `user_id` so the dispatcher knows
-    which calls need the injection.
+    Previously this also stripped `user_id` from each schema so Claude
+    couldn't spoof another user. Since MCP now derives identity from
+    the inbound Authorization header (no user_id in tool args), there's
+    nothing to strip — but we still deep-copy the schema so we don't
+    accidentally mutate the SDK's cached objects.
     """
-    tools: list[dict[str, Any]] = []
-    takes_user_id: set[str] = set()
-    for t in mcp_tools:
-        schema = copy.deepcopy(t.inputSchema) if t.inputSchema else {}
-        props = schema.get("properties") or {}
-        if "user_id" in props:
-            takes_user_id.add(t.name)
-            del props["user_id"]
-            schema["properties"] = props
-            if "required" in schema:
-                schema["required"] = [r for r in schema["required"] if r != "user_id"]
-        tools.append(
-            {
-                "name": t.name,
-                "description": t.description or "",
-                "input_schema": schema,
-            }
-        )
-    return tools, takes_user_id
+    return [
+        {
+            "name": t.name,
+            "description": t.description or "",
+            "input_schema": copy.deepcopy(t.inputSchema) if t.inputSchema else {},
+        }
+        for t in mcp_tools
+    ]
