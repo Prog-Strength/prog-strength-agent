@@ -183,7 +183,14 @@ async def _run_chat_stream(
                 # content blocks materialized — text + tool_use, fully
                 # populated input dicts and all.
                 final = await stream.get_final_message()
-                assistant_blocks = [b.model_dump(mode="json") for b in final.content]
+                # Re-serialize with only INPUT-shape fields. The SDK's
+                # response objects carry output-only fields (e.g.
+                # `parsed_output` on text blocks, `citations`) that
+                # Anthropic's API rejects when the same content is
+                # echoed back as part of the messages array. A naive
+                # `model_dump(mode="json")` would include them and the
+                # next turn 400s with `Extra inputs are not permitted`.
+                assistant_blocks = [_block_for_replay(b) for b in final.content]
                 stop_reason = final.stop_reason
 
             messages.append({"role": "assistant", "content": assistant_blocks})
@@ -195,13 +202,15 @@ async def _run_chat_stream(
             # Execute every tool_use block from this turn before going
             # back to Claude. Multiple parallel tool_use blocks are
             # common for read-only lookups (e.g. list_exercises +
-            # list_workouts in one turn).
+            # list_workouts in one turn). We iterate the SDK objects
+            # rather than the rewritten dicts so we keep direct access
+            # to the strongly-typed block attributes.
             tool_results: list[dict[str, Any]] = []
-            for block_dict in assistant_blocks:
-                if block_dict.get("type") != "tool_use":
+            for block in final.content:
+                if block.type != "tool_use":
                     continue
-                name = block_dict["name"]
-                tool_input = dict(block_dict.get("input") or {})
+                name = block.name
+                tool_input = dict(block.input or {})
                 if name in tools_taking_user_id:
                     # Authoritative injection: whatever Claude sent for
                     # user_id is replaced with the JWT's sub.
@@ -223,7 +232,7 @@ async def _run_chat_stream(
                 tool_results.append(
                     {
                         "type": "tool_result",
-                        "tool_use_id": block_dict["id"],
+                        "tool_use_id": block.id,
                         "content": text,
                         "is_error": is_error,
                     }
@@ -249,6 +258,33 @@ def _sse(payload: dict[str, Any]) -> bytes:
     they see it before dispatching.
     """
     return f"data: {json.dumps(payload)}\n\n".encode()
+
+
+def _block_for_replay(block: Any) -> dict[str, Any]:
+    """Serialize a single Anthropic response content block to the
+    input-shape dict that messages.create accepts on a subsequent turn.
+
+    Why this exists: the SDK's response models include output-only
+    fields (e.g. text blocks carry `parsed_output` and `citations`,
+    tool_use blocks may carry stream-bookkeeping metadata) that the
+    Anthropic API rejects with "Extra inputs are not permitted" if you
+    echo them back unchanged. Whitelisting the exact fields the input
+    schema accepts is the only safe path — `model_dump` is too greedy.
+
+    Unknown block types fall back to the SDK's own dump as a
+    best-effort; if Anthropic adds a new block kind we'd rather see a
+    server-side error than silently drop content.
+    """
+    if block.type == "text":
+        return {"type": "text", "text": block.text}
+    if block.type == "tool_use":
+        return {
+            "type": "tool_use",
+            "id": block.id,
+            "name": block.name,
+            "input": block.input,
+        }
+    return block.model_dump(mode="json")
 
 
 def _build_tool_schemas(
