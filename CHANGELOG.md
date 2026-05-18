@@ -1,3 +1,10 @@
+# [0.6.0](https://github.com/Prog-Strength/prog-strength-agent/compare/v0.5.0...v0.6.0) (2026-05-18)
+
+
+### Features
+
+* **telemetry:** instrument the agent and stream events to the API ([2c54f1b](https://github.com/Prog-Strength/prog-strength-agent/commit/2c54f1b699ba8ee1c9fad5603e2f1273b6dd9cc8))
+
 # [0.5.0](https://github.com/Prog-Strength/prog-strength-agent/compare/v0.4.0...v0.5.0) (2026-05-17)
 
 
