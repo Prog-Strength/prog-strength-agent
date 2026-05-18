@@ -11,6 +11,11 @@ class Config:
     anthropic_api_key: str
     jwt_signing_key: str
     mcp_url: str
+    # Base URL of the Go API, used by the telemetry client to POST
+    # to /internal/telemetry/*. Defaults to the in-Docker hostname.
+    # Empty disables telemetry entirely (useful for local dev where
+    # the API isn't running).
+    api_url: str
     host: str
     port: int
     # Three model slots — see model_router.py for routing logic.
@@ -56,6 +61,10 @@ class Config:
             # to http://localhost:8000/mcp (or similar) for local dev against
             # a uv-run MCP server.
             mcp_url=os.environ.get("PROG_STRENGTH_MCP_URL", "http://mcp:8000/mcp"),
+            # Default targets the API container on the same Docker network.
+            # Empty string disables telemetry — useful for local dev where
+            # the agent runs against a uv-run MCP but no API.
+            api_url=os.environ.get("PROG_STRENGTH_API_URL", "http://api:8080"),
             host=os.environ.get("AGENT_HOST", "0.0.0.0"),
             port=int(os.environ.get("AGENT_PORT", "8001")),
             # Tiered model defaults: Haiku for the common case (workout

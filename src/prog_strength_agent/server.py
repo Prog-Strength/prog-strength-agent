@@ -25,12 +25,14 @@ from anthropic import AsyncAnthropic
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
+from prometheus_fastapi_instrumentator import Instrumentator
 from pydantic import BaseModel
 
 from prog_strength_agent.auth import authenticate
 from prog_strength_agent.config import Config
 from prog_strength_agent.model_harness import ModelHarness
 from prog_strength_agent.model_router import ModelRouter
+from prog_strength_agent.telemetry import TelemetryClient, TurnInstrumentation
 from prog_strength_agent.version import SERVICE, VERSION
 
 log = logging.getLogger(__name__)
@@ -62,8 +64,23 @@ HARNESSES: dict[str, ModelHarness] = {
 }
 router_obj = ModelRouter(client=claude, router_model=config.router_model)
 
+# Telemetry client: fire-and-forget POSTs to the API's internal
+# endpoints. Disabled when api_url is empty (local dev without the
+# API container running) — chat keeps working, telemetry just
+# doesn't get written.
+telemetry_client: TelemetryClient | None = (
+    TelemetryClient(api_base_url=config.api_url) if config.api_url else None
+)
+
 
 app = FastAPI(title=SERVICE, version=VERSION)
+
+# Prometheus /metrics: scrape target reachable only from inside the
+# Docker network (Caddy refuses to proxy /metrics to the public
+# internet). expose() must be called before any routes are added or
+# the route registration order will hide /metrics behind the auth
+# middleware once we add one — call it eagerly at import.
+Instrumentator().instrument(app).expose(app, endpoint="/metrics")
 
 # CORS for the frontend on Vercel (or wherever). The /chat endpoint is
 # called cross-origin from the browser, so without these headers the
@@ -98,6 +115,12 @@ class ChatMessage(BaseModel):
 
 class ChatRequest(BaseModel):
     messages: list[ChatMessage]
+    # Client-generated UUID identifying the chat conversation. When
+    # absent the server generates one inside TurnInstrumentation.new
+    # so no turn lands in telemetry without a session. The frontend
+    # is the canonical generator; absence is a fallback for scripted
+    # callers and older clients.
+    session_id: str | None = None
 
 
 @app.post("/chat")
@@ -113,8 +136,12 @@ async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
     auth = authenticate(request, config.jwt_signing_key)
     messages: list[dict[str, Any]] = [m.model_dump() for m in req.messages]
 
+    telemetry = TurnInstrumentation.new(
+        user_id=auth.user_id, session_id=req.session_id
+    )
+
     return StreamingResponse(
-        _route_and_stream(messages, auth.token),
+        _route_and_stream(messages, auth.token, telemetry),
         media_type="text/event-stream",
         headers={
             # Prevent intermediaries (Caddy, browsers, proxies) from
@@ -129,6 +156,7 @@ async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
 async def _route_and_stream(
     messages: list[dict[str, Any]],
     user_token: str,
+    telemetry: TurnInstrumentation,
 ) -> AsyncGenerator[bytes, None]:
     """Classify the request's tier, dispatch to the matching harness.
 
@@ -136,8 +164,17 @@ async def _route_and_stream(
     tier), so even if the classifier call breaks, /chat keeps working
     — the user may just get a Haiku-level answer to a question that
     would have benefitted from Sonnet.
+
+    After the stream completes (success or error), fires fire-and-forget
+    telemetry POSTs to the API. Telemetry failures are logged but
+    never raised — the chat already returned, and observability
+    outages should not affect product behavior.
     """
-    tier = await router_obj.route(messages)
-    harness = HARNESSES.get(tier, HARNESSES["simple"])
-    async for chunk in harness.stream_chat(messages, user_token):
-        yield chunk
+    try:
+        tier = await router_obj.route(messages, telemetry=telemetry)
+        harness = HARNESSES.get(tier, HARNESSES["simple"])
+        async for chunk in harness.stream_chat(messages, user_token, telemetry):
+            yield chunk
+    finally:
+        if telemetry_client is not None:
+            telemetry_client.record_turn(telemetry)

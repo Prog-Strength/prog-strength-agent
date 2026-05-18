@@ -20,6 +20,7 @@ import json
 import logging
 from collections.abc import AsyncGenerator
 from contextlib import AsyncExitStack
+from datetime import datetime, timezone
 from typing import Any
 
 from anthropic import AsyncAnthropic
@@ -27,6 +28,13 @@ from mcp import ClientSession
 from mcp.client.streamable_http import streamablehttp_client
 
 from prog_strength_agent.prompt import SYSTEM_PROMPT
+from prog_strength_agent.telemetry import (
+    MessageRecord,
+    ToolCallRecord,
+    TurnInstrumentation,
+    now_ms,
+    truncate_result,
+)
 
 log = logging.getLogger(__name__)
 
@@ -61,6 +69,7 @@ class ModelHarness:
         self,
         messages: list[dict[str, Any]],
         user_token: str,
+        telemetry: TurnInstrumentation | None = None,
     ) -> AsyncGenerator[bytes, None]:
         """Run the tool-use loop, yielding SSE-formatted bytes.
 
@@ -73,7 +82,24 @@ class ModelHarness:
         `{"type":"error"}` events rather than HTTP errors — once the
         response is committed to 200, that's the only way to signal
         failure to the client.
+
+        When a `telemetry` instrumentation is passed in, populates it
+        as the turn unfolds (model, tokens, latency, tool calls, final
+        assistant message). The server fires the telemetry POSTs after
+        the generator exits so this method never blocks on them.
         """
+        if telemetry is not None:
+            telemetry.model = self.model
+            # Capture the inbound user message right at the start — if
+            # the harness crashes mid-turn we still have a row for what
+            # the user said.
+            _capture_user_message(messages, telemetry)
+
+        first_token_seen = False
+        turn_start_ms = now_ms()
+        completion_reason = "error"
+        completion_error: str | None = None
+
         # Emit the chosen model upfront so the client can label the
         # assistant turn while text/tool events arrive.
         yield _sse({"type": "model_chosen", "model": self.model})
@@ -95,6 +121,11 @@ class ModelHarness:
             # doesn't require a harness restart.
             mcp_tools = (await session.list_tools()).tools
             tools_for_claude = _build_tool_schemas(mcp_tools)
+
+            # Accumulator for the assistant's user-facing text across
+            # all iterations of the tool-use loop. Saved to telemetry
+            # at the end as the assistant message.
+            assistant_text_parts: list[str] = []
 
             for _iteration in range(MAX_TOOL_LOOP):
                 assistant_blocks: list[dict[str, Any]] = []
@@ -120,6 +151,12 @@ class ModelHarness:
                         elif event.type == "content_block_delta":
                             delta = event.delta
                             if delta.type == "text_delta":
+                                if telemetry is not None and not first_token_seen:
+                                    telemetry.time_to_first_token_ms = (
+                                        now_ms() - turn_start_ms
+                                    )
+                                    first_token_seen = True
+                                assistant_text_parts.append(delta.text)
                                 yield _sse(
                                     {"type": "text_delta", "text": delta.text}
                                 )
@@ -131,6 +168,8 @@ class ModelHarness:
                         _block_for_replay(b) for b in final.content
                     ]
                     stop_reason = final.stop_reason
+                    if telemetry is not None:
+                        _accumulate_usage(telemetry, final)
 
                 messages.append(
                     {"role": "assistant", "content": assistant_blocks}
@@ -140,12 +179,16 @@ class ModelHarness:
                     yield _sse(
                         {"type": "done", "stop_reason": stop_reason or "unknown"}
                     )
+                    completion_reason = stop_reason or "unknown"
                     return
 
                 tool_results: list[dict[str, Any]] = []
                 for block in final.content:
                     if block.type != "tool_use":
                         continue
+                    tool_started = datetime.now(timezone.utc)
+                    tool_start_ms = now_ms()
+                    tool_error: str | None = None
                     try:
                         result = await session.call_tool(
                             block.name, dict(block.input or {})
@@ -154,10 +197,26 @@ class ModelHarness:
                             getattr(c, "text", str(c)) for c in result.content
                         )
                         is_error = bool(result.isError)
+                        if is_error:
+                            tool_error = text
                     except Exception as exc:
                         log.exception("mcp call_tool %s failed", block.name)
                         text = f"tool error: {exc}"
                         is_error = True
+                        tool_error = str(exc)
+
+                    if telemetry is not None:
+                        telemetry.tool_calls.append(
+                            ToolCallRecord(
+                                tool_name=block.name,
+                                arguments_json=_safe_json(block.input),
+                                result_summary=truncate_result(text),
+                                latency_ms=now_ms() - tool_start_ms,
+                                error=tool_error,
+                                started_at=tool_started,
+                                ended_at=datetime.now(timezone.utc),
+                            )
+                        )
 
                     yield _sse(
                         {
@@ -182,11 +241,27 @@ class ModelHarness:
                     "message": f"exceeded tool-use loop limit ({MAX_TOOL_LOOP})",
                 }
             )
+            completion_reason = "error"
+            completion_error = f"exceeded tool-use loop limit ({MAX_TOOL_LOOP})"
         except Exception as exc:
             log.exception("chat stream failed (model=%s)", self.model)
             yield _sse({"type": "error", "message": f"agent error: {exc}"})
+            completion_reason = "error"
+            completion_error = str(exc)
         finally:
             await stack.aclose()
+            if telemetry is not None:
+                if assistant_text_parts:
+                    telemetry.messages.append(
+                        MessageRecord(
+                            role="assistant",
+                            content="".join(assistant_text_parts),
+                        )
+                    )
+                telemetry.finalize(
+                    completion_reason=completion_reason,
+                    error=completion_error,
+                )
 
 
 def _sse(payload: dict[str, Any]) -> bytes:
@@ -216,6 +291,54 @@ def _block_for_replay(block: Any) -> dict[str, Any]:
             "input": block.input,
         }
     return block.model_dump(mode="json")
+
+
+def _safe_json(value: Any) -> str | None:
+    """Best-effort JSON serialization of a tool's input args. Falls
+    back to repr() when something isn't JSON-serializable so telemetry
+    still records a row instead of swallowing the call.
+    """
+    try:
+        return json.dumps(value)
+    except (TypeError, ValueError):
+        return repr(value)
+
+
+def _capture_user_message(
+    messages: list[dict[str, Any]],
+    telemetry: TurnInstrumentation,
+) -> None:
+    """Pull the most recent user-authored text out of the conversation
+    and append it as a MessageRecord. The "user" role for tool_result
+    injections is *also* "user" in Anthropic's schema; we filter those
+    out by requiring string content (humans send strings; tool results
+    are list-of-blocks).
+    """
+    for msg in reversed(messages):
+        if msg.get("role") != "user":
+            continue
+        content = msg.get("content")
+        if isinstance(content, str) and content:
+            telemetry.messages.append(MessageRecord(role="user", content=content))
+            return
+
+
+def _accumulate_usage(telemetry: TurnInstrumentation, final: Any) -> None:
+    """Add this iteration's token usage to the running totals on the
+    instrumentation. Multi-iteration tool-use loops sum across all the
+    model calls within one user-facing turn.
+    """
+    usage = getattr(final, "usage", None)
+    if usage is None:
+        return
+    telemetry.input_tokens += getattr(usage, "input_tokens", 0) or 0
+    telemetry.output_tokens += getattr(usage, "output_tokens", 0) or 0
+    telemetry.cache_creation_tokens += (
+        getattr(usage, "cache_creation_input_tokens", 0) or 0
+    )
+    telemetry.cache_read_tokens += (
+        getattr(usage, "cache_read_input_tokens", 0) or 0
+    )
 
 
 def _build_tool_schemas(mcp_tools: list[Any]) -> list[dict[str, Any]]:

@@ -1,0 +1,253 @@
+"""Agent runtime telemetry.
+
+Each /chat request creates a `TurnInstrumentation` instance that gets
+threaded through the router and the harness; they populate it as the
+turn runs. When the SSE stream finishes (success or error), the
+server fires three fire-and-forget HTTP POSTs to the API's
+/internal/telemetry/* endpoints — one per data shape (turn, tool
+calls, messages).
+
+Failure semantics: telemetry writes must never affect the user's
+chat. Every HTTP call is wrapped in a broad except that logs and
+moves on. If the API is down or the schema is wrong, telemetry is
+lost; the user's response is not.
+
+See prog-strength-docs/sows/monitoring-and-observability.md.
+"""
+
+import asyncio
+import logging
+import time
+import uuid
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+
+import httpx
+
+log = logging.getLogger(__name__)
+
+# Cap how much of a tool's response we keep in `result_summary`.
+# Useful for debugging "what did the model see?" without blowing up
+# the database; the 90-day TTL nulls these anyway.
+_RESULT_SUMMARY_MAX_CHARS = 2000
+
+
+@dataclass
+class ToolCallRecord:
+    """One MCP tool invocation made during a turn."""
+
+    tool_name: str
+    arguments_json: str | None
+    result_summary: str | None
+    latency_ms: int
+    error: str | None
+    started_at: datetime
+    ended_at: datetime
+
+
+@dataclass
+class MessageRecord:
+    """One user or assistant message worth persisting. The SOW limits
+    this to the human-facing pair (last user prompt + final assistant
+    response) — system prompts and tool-result injections do not get
+    rows.
+    """
+
+    role: str  # "user" | "assistant"
+    content: str
+    token_count: int | None = None
+
+
+@dataclass
+class TurnInstrumentation:
+    """Collects every per-turn datum that lands in telemetry.db.
+
+    Mutated by the router (router_model, router_latency_ms, routed_tier)
+    and by the harness (model, tokens, latency, completion_reason,
+    tool_calls, messages). The server reads the final state and fires
+    three POSTs to the API.
+    """
+
+    turn_id: str
+    user_id: str
+    session_id: str
+
+    # Router decision — populated by ModelRouter.route().
+    router_model: str = ""
+    router_latency_ms: int = 0
+    routed_tier: str = ""
+
+    # Main turn — populated by ModelHarness.stream_chat().
+    model: str = ""
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cache_creation_tokens: int = 0
+    cache_read_tokens: int = 0
+    time_to_first_token_ms: int = 0
+    completion_reason: str = ""
+    error: str | None = None
+
+    tool_calls: list[ToolCallRecord] = field(default_factory=list)
+    messages: list[MessageRecord] = field(default_factory=list)
+
+    started_at: datetime = field(
+        default_factory=lambda: datetime.now(timezone.utc)
+    )
+    ended_at: datetime = field(
+        default_factory=lambda: datetime.now(timezone.utc)
+    )
+
+    @classmethod
+    def new(cls, user_id: str, session_id: str | None) -> "TurnInstrumentation":
+        """Construct a fresh instrumentation with a generated turn ID
+        and a started_at pinned to now. The session ID falls back to a
+        fresh UUID if the client didn't supply one, so no turn lands
+        in telemetry without a session.
+        """
+        return cls(
+            turn_id=str(uuid.uuid4()),
+            user_id=user_id,
+            session_id=session_id or str(uuid.uuid4()),
+        )
+
+    def finalize(self, *, completion_reason: str, error: str | None = None) -> None:
+        """Stamp the end of the turn. Called by the harness after the
+        last SSE event, before the server fires the telemetry POSTs.
+        """
+        self.completion_reason = completion_reason
+        self.error = error
+        self.ended_at = datetime.now(timezone.utc)
+
+    @property
+    def total_latency_ms(self) -> int:
+        """Wall-clock duration of the turn in milliseconds."""
+        return int((self.ended_at - self.started_at).total_seconds() * 1000)
+
+
+class TelemetryClient:
+    """Fire-and-forget client for the API's /internal/telemetry/*
+    endpoints. Reachable only from inside the Docker network — Caddy
+    refuses to proxy /internal/* to the public internet, so there's
+    no auth header to set.
+
+    A single instance is shared by the FastAPI app. The underlying
+    httpx.AsyncClient pools connections, so the per-turn cost is just
+    a few microseconds of dispatch plus the network hop.
+    """
+
+    def __init__(self, api_base_url: str, *, timeout_seconds: float = 5.0):
+        self._client = httpx.AsyncClient(
+            base_url=api_base_url,
+            timeout=timeout_seconds,
+        )
+
+    async def aclose(self) -> None:
+        await self._client.aclose()
+
+    def record_turn(self, t: TurnInstrumentation) -> None:
+        """Schedule the three telemetry POSTs for this turn on the
+        event loop and return immediately. Each task catches its own
+        exceptions so a single failure doesn't sink the others.
+        """
+        asyncio.create_task(self._send_turn(t))
+        if t.tool_calls:
+            asyncio.create_task(self._send_tool_calls(t))
+        if t.messages:
+            asyncio.create_task(self._send_messages(t))
+
+    async def _send_turn(self, t: TurnInstrumentation) -> None:
+        body = {
+            "id": t.turn_id,
+            "user_id": t.user_id,
+            "session_id": t.session_id,
+            "model": t.model,
+            "routed_tier": t.routed_tier,
+            "router_model": t.router_model,
+            "router_latency_ms": t.router_latency_ms,
+            "input_tokens": t.input_tokens,
+            "output_tokens": t.output_tokens,
+            "cache_creation_tokens": t.cache_creation_tokens,
+            "cache_read_tokens": t.cache_read_tokens,
+            "total_latency_ms": t.total_latency_ms,
+            "time_to_first_token_ms": t.time_to_first_token_ms,
+            "completion_reason": t.completion_reason,
+            "error": t.error,
+            "started_at": _iso(t.started_at),
+            "ended_at": _iso(t.ended_at),
+        }
+        await self._post("/internal/telemetry/turns", body)
+
+    async def _send_tool_calls(self, t: TurnInstrumentation) -> None:
+        body = {
+            "calls": [
+                {
+                    "turn_id": t.turn_id,
+                    "tool_name": c.tool_name,
+                    "arguments_json": c.arguments_json,
+                    "result_summary": c.result_summary,
+                    "latency_ms": c.latency_ms,
+                    "error": c.error,
+                    "started_at": _iso(c.started_at),
+                    "ended_at": _iso(c.ended_at),
+                }
+                for c in t.tool_calls
+            ],
+        }
+        await self._post("/internal/telemetry/tool-calls", body)
+
+    async def _send_messages(self, t: TurnInstrumentation) -> None:
+        body = {
+            "messages": [
+                {
+                    "turn_id": t.turn_id,
+                    "role": m.role,
+                    "content": m.content,
+                    "token_count": m.token_count,
+                }
+                for m in t.messages
+            ],
+        }
+        await self._post("/internal/telemetry/messages", body)
+
+    async def _post(self, path: str, body: dict) -> None:
+        """One-shot POST. Broad except is intentional — telemetry must
+        never raise into the calling /chat task.
+        """
+        try:
+            resp = await self._client.post(path, json=body)
+            if resp.status_code >= 400:
+                log.warning(
+                    "telemetry: %s returned %d %s",
+                    path,
+                    resp.status_code,
+                    resp.text[:200],
+                )
+        except Exception:
+            # No retries — fire-and-forget. The chat already returned.
+            log.exception("telemetry: %s failed", path)
+
+
+def _iso(dt: datetime) -> str:
+    """RFC3339 timestamp the Go API parses with time.Parse(time.RFC3339, …)."""
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.isoformat().replace("+00:00", "Z")
+
+
+def now_ms() -> int:
+    """Monotonic millisecond timestamp for measuring elapsed durations.
+    Use perf_counter for elapsed math; use datetime.now for wall-clock
+    stamps that get persisted.
+    """
+    return int(time.perf_counter() * 1000)
+
+
+def truncate_result(result: str | None) -> str | None:
+    """Cap the tool result for telemetry. Subject to the 90-day TTL on
+    the API side; keeping it short here also keeps the request body
+    small."""
+    if result is None:
+        return None
+    if len(result) <= _RESULT_SUMMARY_MAX_CHARS:
+        return result
+    return result[:_RESULT_SUMMARY_MAX_CHARS] + "…[truncated]"

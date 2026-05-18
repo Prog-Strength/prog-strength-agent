@@ -20,6 +20,8 @@ from typing import Any
 
 from anthropic import AsyncAnthropic
 
+from prog_strength_agent.telemetry import TurnInstrumentation, now_ms
+
 log = logging.getLogger(__name__)
 
 ROUTER_SYSTEM_PROMPT = """\
@@ -62,18 +64,29 @@ class ModelRouter:
         self.client = client
         self.router_model = router_model
 
-    async def route(self, messages: list[dict[str, Any]]) -> str:
+    async def route(
+        self,
+        messages: list[dict[str, Any]],
+        telemetry: TurnInstrumentation | None = None,
+    ) -> str:
         """Return "simple" or "complex" for the conversation.
 
         Looks at the latest user turn only — keeps the prompt short
         and the decision focused on what the user just asked. The
         full conversation context is left to the chosen harness to
         handle on the actual response call.
+
+        Populates `telemetry.router_model`, `router_latency_ms`, and
+        `routed_tier` when an instrumentation is passed in, so the
+        agent's runtime telemetry captures the routing decision
+        alongside the main turn.
         """
+        started = now_ms()
         text = _last_user_text(messages)
         if not text:
             # No content to classify (empty message or no user turns).
             # Default to simple — nothing to spend Sonnet tokens on.
+            _record(telemetry, self.router_model, now_ms() - started, "simple")
             return "simple"
 
         try:
@@ -85,6 +98,7 @@ class ModelRouter:
             )
         except Exception:
             log.exception("router classification call failed")
+            _record(telemetry, self.router_model, now_ms() - started, "simple")
             return "simple"
 
         # The classifier should answer with one word; tolerate trailing
@@ -97,11 +111,26 @@ class ModelRouter:
                 decision = block.text.strip().lower()
                 break
 
-        if "complex" in decision:
-            log.info("router: complex (text=%r)", text[:80])
-            return "complex"
-        log.info("router: simple (text=%r)", text[:80])
-        return "simple"
+        tier = "complex" if "complex" in decision else "simple"
+        log.info("router: %s (text=%r)", tier, text[:80])
+        _record(telemetry, self.router_model, now_ms() - started, tier)
+        return tier
+
+
+def _record(
+    telemetry: TurnInstrumentation | None,
+    router_model: str,
+    latency_ms: int,
+    tier: str,
+) -> None:
+    """Set the router fields on the instrumentation when one was passed.
+    No-op when telemetry is disabled or not supplied.
+    """
+    if telemetry is None:
+        return
+    telemetry.router_model = router_model
+    telemetry.router_latency_ms = latency_ms
+    telemetry.routed_tier = tier
 
 
 def _last_user_text(messages: list[dict[str, Any]]) -> str:

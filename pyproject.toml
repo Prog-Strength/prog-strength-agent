@@ -19,6 +19,8 @@ dependencies = [
     # JWT validation. The agent shares the API's signing key and trusts
     # tokens minted by the API's OAuth callback flow.
     "pyjwt>=2.8",
+    "httpx>=0.28.1",
+    "prometheus-fastapi-instrumentator>=7.1.0",
 ]
 
 [project.scripts]
