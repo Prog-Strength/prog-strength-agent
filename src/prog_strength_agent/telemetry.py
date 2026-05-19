@@ -23,6 +23,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
 import httpx
+from prometheus_client import Counter
 
 log = logging.getLogger(__name__)
 
@@ -30,6 +31,68 @@ log = logging.getLogger(__name__)
 # Useful for debugging "what did the model see?" without blowing up
 # the database; the 90-day TTL nulls these anyway.
 _RESULT_SUMMARY_MAX_CHARS = 2000
+
+# Prometheus counters. Materialized once per turn from
+# TurnInstrumentation by record_prometheus_metrics(). The same
+# per-turn data also gets persisted to telemetry.db via the
+# TelemetryClient — Prometheus gives us live dashboards over rates
+# and totals; SQLite gives us the full structured history for
+# ad-hoc queries.
+#
+# Cardinality: bounded by (model × tier × direction) and (model ×
+# tier × completion_reason). With ~3 models, 2 tiers, 4 directions,
+# 4 completion_reasons, max series count is in the dozens. Safe.
+AGENT_TOKENS_TOTAL = Counter(
+    "agent_tokens_total",
+    "Tokens consumed by the agent across chat turns.",
+    ["direction", "model", "tier"],
+)
+AGENT_ROUTING_DECISIONS_TOTAL = Counter(
+    "agent_routing_decisions_total",
+    "Router classification count by tier.",
+    ["tier"],
+)
+AGENT_TURNS_TOTAL = Counter(
+    "agent_turns_total",
+    "Total chat turns processed by the agent.",
+    ["model", "tier", "completion_reason"],
+)
+
+
+def record_prometheus_metrics(t: "TurnInstrumentation") -> None:
+    """Materialize per-turn data into Prometheus counters. Called
+    once per turn from server.py after the SSE stream completes.
+
+    Synchronous and in-process — unlike the TelemetryClient there's
+    no network failure mode here, so this runs unconditionally
+    (the HTTP telemetry write is fire-and-forget; this counter
+    bump is not).
+    """
+    # Defensive: if the harness exited before populating its fields
+    # (e.g. router itself threw), the labels would be empty strings
+    # and pollute the metric stream. Skip those.
+    if not t.routed_tier or not t.model:
+        return
+
+    AGENT_TURNS_TOTAL.labels(
+        model=t.model,
+        tier=t.routed_tier,
+        completion_reason=t.completion_reason or "unknown",
+    ).inc()
+    AGENT_ROUTING_DECISIONS_TOTAL.labels(tier=t.routed_tier).inc()
+
+    # Token totals are summed across all iterations of the tool-use
+    # loop in the harness; one inc per direction here.
+    for direction, count in (
+        ("input", t.input_tokens),
+        ("output", t.output_tokens),
+        ("cache_creation", t.cache_creation_tokens),
+        ("cache_read", t.cache_read_tokens),
+    ):
+        if count > 0:
+            AGENT_TOKENS_TOTAL.labels(
+                direction=direction, model=t.model, tier=t.routed_tier
+            ).inc(count)
 
 
 @dataclass

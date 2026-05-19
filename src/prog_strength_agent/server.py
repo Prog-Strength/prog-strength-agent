@@ -32,7 +32,11 @@ from prog_strength_agent.auth import authenticate
 from prog_strength_agent.config import Config
 from prog_strength_agent.model_harness import ModelHarness
 from prog_strength_agent.model_router import ModelRouter
-from prog_strength_agent.telemetry import TelemetryClient, TurnInstrumentation
+from prog_strength_agent.telemetry import (
+    TelemetryClient,
+    TurnInstrumentation,
+    record_prometheus_metrics,
+)
 from prog_strength_agent.version import SERVICE, VERSION
 
 log = logging.getLogger(__name__)
@@ -176,5 +180,9 @@ async def _route_and_stream(
         async for chunk in harness.stream_chat(messages, user_token, telemetry):
             yield chunk
     finally:
+        # Live Prometheus counters first — synchronous, in-process,
+        # no failure mode. The HTTP write to the API is fire-and-
+        # forget after; a network glitch must not skip the metrics.
+        record_prometheus_metrics(telemetry)
         if telemetry_client is not None:
             telemetry_client.record_turn(telemetry)
