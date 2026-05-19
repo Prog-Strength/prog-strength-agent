@@ -42,8 +42,45 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  deploy:
+  # Build the agent image on the GitHub runner and push it to ECR under
+  # the released version tag. The EC2 host pulls this same tag at deploy
+  # time, so the build environment is consistent across releases and
+  # divorced from the host's disk pressure.
+  build_and_push:
     needs: release
+    if: needs.release.outputs.new_release_published == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Build from the exact released tag, not the moving HEAD of main.
+          ref: v${{ needs.release.outputs.new_release_version }}
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-2
+
+      - id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build and push agent image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          # Repo is configured IMMUTABLE in terraform, so this tag can
+          # only be pushed once. A re-run of release.yml against an
+          # existing version will fail at push — intended safeguard.
+          tags: ${{ steps.ecr-login.outputs.registry }}/prog-strength-prod/agent:v${{ needs.release.outputs.new_release_version }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    needs: [release, build_and_push]
     if: needs.release.outputs.new_release_published == 'true'
     runs-on: ubuntu-latest
     steps:
@@ -61,34 +98,47 @@ jobs:
           envs: ANTHROPIC_API_KEY,JWT_SIGNING_KEY,CORS_ALLOWED_ORIGINS,RELEASE_VERSION
           script: |
             # Abort on the first failing command. Without this, a failed
-            # `docker compose up --build` is followed by trailing `ps` /
-            # `logs` calls that succeed, and the script's exit code is
-            # the last command's — appleboy/ssh-action would then report
-            # green on a real failure.
+            # docker compose call is followed by trailing `ps`/`logs`
+            # calls that succeed, and the script's exit code is the last
+            # command's — appleboy/ssh-action would then report green on
+            # a real failure.
             set -e
 
-            cd /home/ubuntu/prog-strength-agent
-            # Fetch the new tag created by semantic-release and check it
-            # out, so we deploy the exact released commit (not whatever
-            # main has drifted to between release and deploy).
-            git fetch --tags --prune
-            git checkout "v${RELEASE_VERSION}"
+            # The agent compose file lives in prog-strength-infra now;
+            # the agent repo isn't checked out on the host. The released
+            # image comes from ECR (see below).
+            cd /home/ubuntu/prog-strength-infra
+            git fetch --prune
+            git checkout main
+            git pull --ff-only
+
+            cd compose/agent
+
+            # Authenticate docker to ECR using the instance role. awscli
+            # is installed by bootstrap.sh and reads creds from the EC2
+            # metadata service, so no static keys flow through the runner.
+            ECR_REGISTRY="$(aws sts get-caller-identity --query Account --output text).dkr.ecr.us-east-2.amazonaws.com"
+            aws ecr get-login-password --region us-east-2 \
+              | docker login --username AWS --password-stdin "${ECR_REGISTRY}"
 
             # Only secrets go in .env. Non-secret values live in
             # docker-compose.yml so they're version-controlled and
-            # reviewable. APP_VERSION flows into the container's
-            # environment via docker-compose interpolation and is read
-            # at runtime by prog_strength_agent.version.
+            # reviewable. APP_VERSION + ECR_REGISTRY resolve the image:
+            # line in docker-compose.yml.
             umask 077
             cat > .env <<EOF
             ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
             JWT_SIGNING_KEY=${JWT_SIGNING_KEY}
             CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS}
             APP_VERSION=v${RELEASE_VERSION}
+            ECR_REGISTRY=${ECR_REGISTRY}
             EOF
 
+            # Pull the released image up-front so a missing/broken push
+            # surfaces before we tear down the running stack.
+            docker compose pull agent
             docker compose down
-            docker compose up --build -d
+            docker compose up -d
 
             echo "Deployed v${RELEASE_VERSION}"
             docker compose ps
