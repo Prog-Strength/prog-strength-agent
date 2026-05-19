@@ -1,3 +1,10 @@
+# [0.8.0](https://github.com/Prog-Strength/prog-strength-agent/compare/v0.7.0...v0.8.0) (2026-05-19)
+
+
+### Features
+
+* **build:** publish agent image to ECR and pull from it on deploy ([ee6b450](https://github.com/Prog-Strength/prog-strength-agent/commit/ee6b4501e95c80d639df3b6ece5a7b77300979e6))
+
 # [0.7.0](https://github.com/Prog-Strength/prog-strength-agent/compare/v0.6.0...v0.7.0) (2026-05-19)
 
 
