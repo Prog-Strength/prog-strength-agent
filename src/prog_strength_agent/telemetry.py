@@ -23,7 +23,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
 import httpx
-from prometheus_client import Counter
+from prometheus_client import Counter, Histogram
 
 log = logging.getLogger(__name__)
 
@@ -56,6 +56,26 @@ AGENT_TURNS_TOTAL = Counter(
     "agent_turns_total",
     "Total chat turns processed by the agent.",
     ["model", "tier", "completion_reason"],
+)
+# MCP tool invocations. Cardinality bounded by the (small) catalog
+# of MCP tools (~5 today); outcome is "ok" or "error", so worst case
+# is ~10 series. The histogram for latency is by tool_name only so
+# percentile queries (p95 by tool) work without further label
+# combinations.
+AGENT_TOOL_CALLS_TOTAL = Counter(
+    "agent_tool_calls_total",
+    "MCP tool invocations made by the agent during chat turns.",
+    ["tool_name", "outcome"],
+)
+AGENT_TOOL_CALL_DURATION_SECONDS = Histogram(
+    "agent_tool_call_duration_seconds",
+    "Duration of a single MCP tool invocation.",
+    ["tool_name"],
+    # Buckets cover the practical range: a few ms for in-process
+    # work up to a couple of seconds for an MCP -> API roundtrip
+    # that touches SQLite. Anything above ~10s is "something is
+    # wrong" rather than "slow", so we don't extend further.
+    buckets=(0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.0, 5.0, 10.0),
 )
 
 
@@ -93,6 +113,21 @@ def record_prometheus_metrics(t: "TurnInstrumentation") -> None:
             AGENT_TOKENS_TOTAL.labels(
                 direction=direction, model=t.model, tier=t.routed_tier
             ).inc(count)
+
+    # Tool calls — one Prometheus event per MCP invocation recorded
+    # during the turn. The harness already timed each call and stamped
+    # its outcome onto the ToolCallRecord; we just materialize those
+    # records into Counter/Histogram bumps here.
+    for call in t.tool_calls:
+        outcome = "error" if call.error else "ok"
+        AGENT_TOOL_CALLS_TOTAL.labels(
+            tool_name=call.tool_name, outcome=outcome
+        ).inc()
+        # latency_ms is integer milliseconds; the histogram is in
+        # seconds to match Prometheus convention.
+        AGENT_TOOL_CALL_DURATION_SECONDS.labels(
+            tool_name=call.tool_name
+        ).observe(call.latency_ms / 1000.0)
 
 
 @dataclass
