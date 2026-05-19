@@ -1,3 +1,11 @@
+# [0.7.0](https://github.com/Prog-Strength/prog-strength-agent/compare/v0.6.0...v0.7.0) (2026-05-19)
+
+
+### Features
+
+* **telemetry:** publish token + routing counters to Prometheus ([15a9440](https://github.com/Prog-Strength/prog-strength-agent/commit/15a944042dda0829d7f84baf8f6b083f0e6a78f6))
+* **telemetry:** publish tool-call counters and latency histogram ([e66099a](https://github.com/Prog-Strength/prog-strength-agent/commit/e66099aa3def681d204c1f2cebb2c42b5ada84db))
+
 # [0.6.0](https://github.com/Prog-Strength/prog-strength-agent/compare/v0.5.0...v0.6.0) (2026-05-18)
 
 
