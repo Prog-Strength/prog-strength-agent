@@ -1,3 +1,10 @@
+# [0.9.0](https://github.com/Prog-Strength/prog-strength-agent/compare/v0.8.1...v0.9.0) (2026-05-30)
+
+
+### Features
+
+* **chat:** /title endpoint generates 3-6 word session titles via Haiku ([ff57a8b](https://github.com/Prog-Strength/prog-strength-agent/commit/ff57a8b7b41877296e71f0331c907124fea43a17))
+
 ## [0.8.1](https://github.com/Prog-Strength/prog-strength-agent/compare/v0.8.0...v0.8.1) (2026-05-19)
 
 
