@@ -1,3 +1,10 @@
+## [0.9.1](https://github.com/Prog-Strength/prog-strength-agent/compare/v0.9.0...v0.9.1) (2026-05-30)
+
+
+### Bug Fixes
+
+* **chat:** stop Haiku titling every conversation "New Chat" ([82e9b7d](https://github.com/Prog-Strength/prog-strength-agent/commit/82e9b7d880eea67dfe93571e74292f677f3bef28))
+
 # [0.9.0](https://github.com/Prog-Strength/prog-strength-agent/compare/v0.8.1...v0.9.0) (2026-05-30)
 
 
