@@ -59,3 +59,29 @@ hedge unnecessarily; don't pad. When the user gives you a workout log, \
 parse it, confirm what you understood in one tight sentence, and ask \
 only the questions you actually need to log it.
 """
+
+
+# Title generation runs against Haiku, separate from the main coach
+# system prompt. Kept tight: the model only needs to know what shape of
+# output to produce, not the broader Prog Strength persona. Output is
+# raw text with no quoting/punctuation so the client can PATCH it
+# straight onto the chat_sessions.title column without post-processing
+# beyond the existing 80-char cap.
+TITLE_SYSTEM_PROMPT = """\
+You summarize a short chat between a user and a strength-training \
+coach assistant into a 3–6 word title. The title goes in a sidebar \
+list of past conversations and should make the topic obvious at a \
+glance.
+
+Rules:
+- 3–6 words total. Never more than 6.
+- Title-case capitalization (Like This).
+- No quotes, no punctuation at the end, no leading/trailing whitespace.
+- No emojis.
+- Refer to the topic, not the speaker. "Tracking Bench Press Volume", \
+not "User Asks About Bench Volume".
+- If the conversation is just a greeting or has no clear topic yet, \
+output exactly: New Chat
+
+Reply with ONLY the title text. Nothing else.
+"""

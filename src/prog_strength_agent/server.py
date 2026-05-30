@@ -37,6 +37,7 @@ from prog_strength_agent.telemetry import (
     TurnInstrumentation,
     record_prometheus_metrics,
 )
+from prog_strength_agent.title import TitleGenerator
 from prog_strength_agent.version import SERVICE, VERSION
 
 log = logging.getLogger(__name__)
@@ -67,6 +68,12 @@ HARNESSES: dict[str, ModelHarness] = {
     ),
 }
 router_obj = ModelRouter(client=claude, router_model=config.router_model)
+
+# TitleGenerator reuses the cheap simple-tier model (Haiku) since
+# title summarization is a fixed-cost classification task that
+# doesn't benefit from Sonnet. Same shared AsyncAnthropic client as
+# the harnesses + router — no extra connection pool.
+title_generator = TitleGenerator(client=claude, model=config.simple_model)
 
 # Telemetry client: fire-and-forget POSTs to the API's internal
 # endpoints. Disabled when api_url is empty (local dev without the
@@ -155,6 +162,45 @@ async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
             "X-Accel-Buffering": "no",
         },
     )
+
+
+class TitleRequest(BaseModel):
+    """Body for POST /title. Same ChatMessage shape /chat accepts —
+    typically the first user message + first assistant reply from a
+    fresh chat session, but the endpoint accepts any conversation
+    excerpt the client wants summarized.
+    """
+
+    messages: list[ChatMessage]
+
+
+class TitleResponse(BaseModel):
+    title: str
+
+
+@app.post("/title")
+async def title(req: TitleRequest, request: Request) -> TitleResponse:
+    """Generate a 3–6 word title for the conversation via Haiku.
+
+    Synchronous (non-streaming) by design — the client fires this
+    fire-and-forget after the first turn lands, then PATCHes the
+    returned title onto the API's chat_sessions row. The endpoint
+    never raises: TitleGenerator.generate falls back to a slice of
+    the first user message on any error so the client always has
+    something to PATCH.
+
+    Auth uses the same JWT middleware /chat does. We don't persist
+    the result here — the agent stays stateless; the client owns
+    the PATCH against the API.
+    """
+    # Validate the JWT for parity with /chat. The user id isn't used
+    # downstream (TitleGenerator is per-message-text only) but
+    # gating the endpoint prevents an anonymous caller from burning
+    # Haiku tokens.
+    _ = authenticate(request, config.jwt_signing_key)
+    messages: list[dict[str, Any]] = [m.model_dump() for m in req.messages]
+    generated = await title_generator.generate(messages)
+    return TitleResponse(title=generated)
 
 
 async def _route_and_stream(
