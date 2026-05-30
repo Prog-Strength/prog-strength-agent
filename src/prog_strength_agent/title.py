@@ -84,16 +84,24 @@ class TitleGenerator:
 
 
 def _render_for_title(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Reshape the chat-format messages into a single user turn for
-    the title prompt.
+    """Reshape the chat-format messages into an Anthropic Messages
+    payload for the title prompt.
 
-    Haiku doesn't need the full assistant tool-use scaffolding to
-    pick a title — it just needs to know what the conversation is
-    about. We flatten user + assistant text into one labeled
-    transcript so the model sees both sides without us having to
-    fight role alternation rules on the prompt side.
+    Earlier revisions flattened the whole conversation into a single
+    labeled "User: …\\nAssistant: …" user turn — Haiku saw it as
+    "someone is showing me a transcript" rather than "this is the
+    conversation I'm meant to title", and leaned heavily on the
+    fallback. Passing the actual user/assistant alternation followed
+    by an explicit instruction-shaped user turn produces real topic
+    titles instead.
+
+    Tool-use blocks and other non-text content are dropped — they
+    aren't useful for titling and aren't worth the role-alternation
+    headache they introduce when the agent sent multiple assistant
+    blocks in a row inside one turn.
     """
-    lines: list[str] = []
+    rendered: list[dict[str, Any]] = []
+    last_role: str | None = None
     for msg in messages:
         role = msg.get("role", "")
         if role not in ("user", "assistant"):
@@ -101,10 +109,37 @@ def _render_for_title(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
         text = _flatten_text(msg.get("content"))
         if not text:
             continue
-        prefix = "User" if role == "user" else "Assistant"
-        lines.append(f"{prefix}: {text}")
-    transcript = "\n".join(lines) if lines else "(empty conversation)"
-    return [{"role": "user", "content": transcript}]
+        # Anthropic requires strict user/assistant alternation; merge
+        # adjacent same-role turns into one block so we don't 400.
+        if role == last_role and rendered:
+            rendered[-1]["content"] += "\n\n" + text
+        else:
+            rendered.append({"role": role, "content": text})
+            last_role = role
+
+    if not rendered:
+        # Shouldn't happen in the live flow (clients only call /title
+        # after a real turn), but defend against an empty payload by
+        # synthesizing a user turn so the API call has something
+        # well-formed to send.
+        rendered.append({"role": "user", "content": "(no conversation)"})
+
+    # If the conversation ended on the assistant (the live case — we
+    # call /title right after a user/assistant pair), append a final
+    # user-role instruction so Haiku knows exactly what to produce.
+    # When it already ends on user (rare; only if a malformed payload
+    # slips through), merge the instruction into the last turn rather
+    # than violating the alternation rule.
+    instruction = (
+        "Now write a short title (3–6 words, title case, no quotes, no "
+        "punctuation) that captures the topic of the conversation above."
+    )
+    if rendered[-1]["role"] == "assistant":
+        rendered.append({"role": "user", "content": instruction})
+    else:
+        rendered[-1]["content"] += "\n\n" + instruction
+
+    return rendered
 
 
 def _flatten_text(content: Any) -> str:

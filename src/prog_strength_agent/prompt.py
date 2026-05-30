@@ -67,21 +67,29 @@ only the questions you actually need to log it.
 # raw text with no quoting/punctuation so the client can PATCH it
 # straight onto the chat_sessions.title column without post-processing
 # beyond the existing 80-char cap.
+#
+# Important: don't give Haiku an escape hatch to "New Chat" — earlier
+# revisions did and the model leaned on it for nearly every
+# conversation, leaving the history list full of identical labels.
+# An empty-input fallback still exists in title.py's
+# _fallback_title, but only for truly contentless inputs (which the
+# clients never actually send — they only invoke /title after a
+# completed turn).
 TITLE_SYSTEM_PROMPT = """\
-You summarize a short chat between a user and a strength-training \
-coach assistant into a 3–6 word title. The title goes in a sidebar \
-list of past conversations and should make the topic obvious at a \
+You write a short title for a chat conversation between a user and a \
+strength-training coach assistant. The title appears in a sidebar \
+list of past conversations, so it should make the topic obvious at a \
 glance.
 
 Rules:
-- 3–6 words total. Never more than 6.
-- Title-case capitalization (Like This).
-- No quotes, no punctuation at the end, no leading/trailing whitespace.
-- No emojis.
-- Refer to the topic, not the speaker. "Tracking Bench Press Volume", \
-not "User Asks About Bench Volume".
-- If the conversation is just a greeting or has no clear topic yet, \
-output exactly: New Chat
+- 3 to 6 words. Never more than 6.
+- Title-case (Like This).
+- No quotes, no trailing punctuation, no emojis.
+- Refer to the subject matter, not the speakers. \
+"Tracking Bench Press Volume", not "User Asks About Bench Volume".
+- Always produce a real topic title. Even a short conversation has a \
+subject — pick whatever the user is asking about, logging, or \
+trying to figure out.
 
-Reply with ONLY the title text. Nothing else.
+Reply with ONLY the title text. No preamble, no explanation.
 """
