@@ -92,6 +92,10 @@ jobs:
         uses: appleboy/ssh-action@v1.0.3
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          # Optional. Empty → /speak returns 503; agent still boots
+          # and /chat + /title keep working. Add the secret in GitHub
+          # to enable TTS.
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           JWT_SIGNING_KEY: ${{ secrets.JWT_SIGNING_KEY }}
           CORS_ALLOWED_ORIGINS: ${{ secrets.CORS_ALLOWED_ORIGINS }}
           RELEASE_VERSION: ${{ needs.release.outputs.new_release_version }}
@@ -99,7 +103,7 @@ jobs:
           host: ${{ secrets.EC2_HOST }}
           username: ubuntu
           key: ${{ secrets.EC2_SSH_KEY }}
-          envs: ANTHROPIC_API_KEY,JWT_SIGNING_KEY,CORS_ALLOWED_ORIGINS,RELEASE_VERSION
+          envs: ANTHROPIC_API_KEY,OPENAI_API_KEY,JWT_SIGNING_KEY,CORS_ALLOWED_ORIGINS,RELEASE_VERSION
           script: |
             # Abort on the first failing command. Without this, a failed
             # docker compose call is followed by trailing `ps`/`logs`
@@ -132,6 +136,7 @@ jobs:
             umask 077
             cat > .env <<EOF
             ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+            OPENAI_API_KEY=${OPENAI_API_KEY}
             JWT_SIGNING_KEY=${JWT_SIGNING_KEY}
             CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS}
             APP_VERSION=v${RELEASE_VERSION}

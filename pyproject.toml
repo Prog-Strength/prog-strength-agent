@@ -13,6 +13,10 @@ dependencies = [
     "uvicorn[standard]>=0.30",
     # Claude orchestration.
     "anthropic>=0.40",
+    # OpenAI SDK — used by /speak for TTS. Anthropic doesn't have an
+    # audio surface yet, so this is the second LLM-provider SDK the
+    # agent talks to. See prog-strength-docs/sows/voice-chat.md.
+    "openai>=1.50",
     # MCP Python SDK — used to maintain a persistent ClientSession to
     # prog-strength-mcp over streamable HTTP.
     "mcp>=1.0",

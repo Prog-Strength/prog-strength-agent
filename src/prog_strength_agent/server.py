@@ -24,7 +24,7 @@ from typing import Any
 from anthropic import AsyncAnthropic
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 from prometheus_fastapi_instrumentator import Instrumentator
 from pydantic import BaseModel
 
@@ -32,6 +32,7 @@ from prog_strength_agent.auth import authenticate
 from prog_strength_agent.config import Config
 from prog_strength_agent.model_harness import ModelHarness
 from prog_strength_agent.model_router import ModelRouter
+from prog_strength_agent.speak import SpeakError, TTSGenerator
 from prog_strength_agent.telemetry import (
     TelemetryClient,
     TurnInstrumentation,
@@ -74,6 +75,17 @@ router_obj = ModelRouter(client=claude, router_model=config.router_model)
 # doesn't benefit from Sonnet. Same shared AsyncAnthropic client as
 # the harnesses + router — no extra connection pool.
 title_generator = TitleGenerator(client=claude, model=config.simple_model)
+
+# TTSGenerator owns the OpenAI client + the per-user daily char
+# counter. Lives as a module-level singleton so the counter survives
+# across requests; uvicorn workers are one process at our scale.
+# See prog-strength-docs/sows/voice-chat.md.
+tts_generator = TTSGenerator(
+    api_key=config.openai_api_key,
+    model=config.openai_tts_model,
+    default_voice=config.tts_voice_default,
+    daily_char_cap=config.tts_daily_char_cap_per_user,
+)
 
 # Telemetry client: fire-and-forget POSTs to the API's internal
 # endpoints. Disabled when api_url is empty (local dev without the
@@ -201,6 +213,70 @@ async def title(req: TitleRequest, request: Request) -> TitleResponse:
     messages: list[dict[str, Any]] = [m.model_dump() for m in req.messages]
     generated = await title_generator.generate(messages)
     return TitleResponse(title=generated)
+
+
+class SpeakRequest(BaseModel):
+    """Body for POST /speak. `text` is the assistant turn the client
+    wants spoken; `voice` is an optional override of the configured
+    default (must be one of the closed enum in speak.SUPPORTED_VOICES,
+    or the endpoint returns 400).
+    """
+
+    text: str
+    voice: str | None = None
+
+
+@app.post("/speak")
+async def speak(req: SpeakRequest, request: Request) -> Response:
+    """Generate spoken audio for `text` via OpenAI TTS.
+
+    Synchronous, non-streaming, returns the full mp3 payload after
+    OpenAI finishes generating it. Clients call this when "voice
+    mode" is on after each completed /chat stream — the assistant's
+    text comes in, the audio bytes go back, the client plays them.
+
+    Auth: same JWT middleware /chat + /title use. Per-user daily
+    character cap is enforced before the OpenAI call so a malformed
+    or runaway client can't drain the API budget.
+
+    Failure modes map directly from SpeakError subclasses to HTTP
+    statuses: text length / voice validity → 400, quota → 429,
+    missing OpenAI key → 503, OpenAI SDK failure (rate limit,
+    network) → 500 with a sanitized message.
+    """
+    auth = authenticate(request, config.jwt_signing_key)
+    try:
+        audio = await tts_generator.generate(
+            user_id=auth.user_id,
+            text=req.text,
+            voice=req.voice,
+        )
+    except SpeakError as e:
+        # The exception's status carries the intended HTTP code;
+        # FastAPI turns this Response into the actual reply.
+        return Response(
+            content=str(e),
+            status_code=e.status,
+            media_type="text/plain; charset=utf-8",
+        )
+    except Exception as e:
+        # OpenAI SDK / network errors. Sanitize the message so any
+        # internal hints (org id, request id) the SDK might surface
+        # don't leak to the client.
+        log.exception("speak: OpenAI call failed")
+        return Response(
+            content=f"speak failed: {type(e).__name__}",
+            status_code=500,
+            media_type="text/plain; charset=utf-8",
+        )
+    return Response(
+        content=audio,
+        media_type="audio/mpeg",
+        # mp3 bytes are immutable for a given (text, voice, model)
+        # tuple but we don't expose a stable key the client could
+        # cache against, so just disable caching everywhere.
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 async def _route_and_stream(

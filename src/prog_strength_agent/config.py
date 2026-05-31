@@ -29,6 +29,14 @@ class Config:
     router_model: str
     max_tokens: int
     cors_allowed_origins: tuple[str, ...]
+    # OpenAI integration — used by /speak for text-to-speech. Empty
+    # api_key disables the endpoint (returns 503 at request time
+    # rather than failing startup; useful for local dev without an
+    # OpenAI key on hand). See prog-strength-docs/sows/voice-chat.md.
+    openai_api_key: str
+    openai_tts_model: str
+    tts_voice_default: str
+    tts_daily_char_cap_per_user: int
 
     @classmethod
     def from_env(cls) -> "Config":
@@ -83,4 +91,15 @@ class Config:
             ),
             max_tokens=int(os.environ.get("CLAUDE_MAX_TOKENS", "2048")),
             cors_allowed_origins=cors_allowed_origins,
+            # OpenAI TTS for /speak. Key is optional at startup —
+            # /speak returns 503 when unset so local dev without an
+            # OpenAI key on hand still boots. Default voice is
+            # "onyx" per the voice-chat SOW (strength-coach feel);
+            # tts-1 is the cheap-and-fast model (vs tts-1-hd).
+            openai_api_key=os.environ.get("OPENAI_API_KEY", ""),
+            openai_tts_model=os.environ.get("OPENAI_TTS_MODEL", "tts-1"),
+            tts_voice_default=os.environ.get("TTS_VOICE_DEFAULT", "onyx"),
+            tts_daily_char_cap_per_user=int(
+                os.environ.get("TTS_DAILY_CHAR_CAP_PER_USER", "50000")
+            ),
         )
