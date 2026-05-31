@@ -1,3 +1,10 @@
+## [0.11.2](https://github.com/Prog-Strength/prog-strength-agent/compare/v0.11.1...v0.11.2) (2026-05-31)
+
+
+### Bug Fixes
+
+* **deploy:** write AWS_REGION to .env so awslogs driver finds the right region ([10bce99](https://github.com/Prog-Strength/prog-strength-agent/commit/10bce99640d5721da46e40f1003c9b38117e7b52))
+
 ## [0.11.1](https://github.com/Prog-Strength/prog-strength-agent/compare/v0.11.0...v0.11.1) (2026-05-31)
 
 
