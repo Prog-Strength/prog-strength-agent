@@ -78,6 +78,24 @@ AGENT_TOOL_CALL_DURATION_SECONDS = Histogram(
     buckets=(0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.0, 5.0, 10.0),
 )
 
+# Voice-mode time-to-first-audio. Reported by the client via
+# POST /telemetry/voice — measured end-to-end from "user pressed
+# send" to "first audio_chunk's mp3 starts playing." This is the
+# load-bearing UX metric for the streaming-tts SOW; a regression
+# beyond ~2s makes voice mode feel pointless. The Grafana dashboard
+# renders this histogram with a horizontal 2s threshold line.
+#
+# Buckets are dense around the 1-3s target range, sparse past 5s
+# where any sample is already a usability failure. user_id is the
+# only label — keeps cardinality at "number of users" rather than
+# blowing up with per-session labels.
+AGENT_VOICE_TIME_TO_FIRST_AUDIO_SECONDS = Histogram(
+    "agent_voice_time_to_first_audio_seconds",
+    "End-to-end time-to-first-audio in voice mode, reported by the client.",
+    ["user_id"],
+    buckets=(0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 5.0, 8.0, 15.0),
+)
+
 
 def record_prometheus_metrics(t: "TurnInstrumentation") -> None:
     """Materialize per-turn data into Prometheus counters. Called

@@ -35,12 +35,14 @@ from prog_strength_agent.model_router import ModelRouter
 from prog_strength_agent.prompt import build_chat_system_prompt
 from prog_strength_agent.speak import SpeakError, TTSGenerator
 from prog_strength_agent.telemetry import (
+    AGENT_VOICE_TIME_TO_FIRST_AUDIO_SECONDS,
     TelemetryClient,
     TurnInstrumentation,
     record_prometheus_metrics,
 )
 from prog_strength_agent.title import TitleGenerator
 from prog_strength_agent.version import SERVICE, VERSION
+from prog_strength_agent.voice_stream import voice_streamer
 
 log = logging.getLogger(__name__)
 
@@ -153,6 +155,13 @@ class ChatRequest(BaseModel):
     # see prompt.build_chat_system_prompt. Falls back to UTC when
     # missing or unrecognized, so older clients keep working.
     client_timezone: str | None = None
+    # When true, the server runs the streaming-TTS pipeline alongside
+    # the existing text streaming: text deltas pass through unchanged
+    # AND new audio_chunk SSE events carry per-sentence mp3 audio for
+    # the client to play in order. False (or missing) preserves
+    # today's behavior — clients without voice mode see no behavior
+    # change. See prog-strength-docs/sows/streaming-tts.md.
+    voice_mode: bool = False
 
 
 @app.post("/chat")
@@ -179,8 +188,22 @@ async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
     # prompt.build_chat_system_prompt for the date-prefix rationale.
     system_prompt = build_chat_system_prompt(req.client_timezone)
 
+    inner = _route_and_stream(
+        messages, auth.token, telemetry, system_prompt
+    )
+    # When voice_mode is on, wrap the SSE stream with a voice_streamer
+    # that buffers text deltas, detects sentence boundaries, fires
+    # TTS for each sentence in parallel, and emits audio_chunk events
+    # alongside the original text deltas. Off → no buffering, no TTS,
+    # behavior is identical to the pre-streaming-tts /chat.
+    stream = (
+        voice_streamer(inner, user_id=auth.user_id, tts=tts_generator)
+        if req.voice_mode
+        else inner
+    )
+
     return StreamingResponse(
-        _route_and_stream(messages, auth.token, telemetry, system_prompt),
+        stream,
         media_type="text/event-stream",
         headers={
             # Prevent intermediaries (Caddy, browsers, proxies) from
@@ -295,6 +318,40 @@ async def speak(req: SpeakRequest, request: Request) -> Response:
     )
 
 
+class VoiceTelemetryRequest(BaseModel):
+    """Body for POST /telemetry/voice. The client measures time-to-
+    first-audio end-to-end (from "user pressed send" to "first
+    audio_chunk's mp3 starts playing") and reports the result here
+    once per turn after the first audio plays.
+    """
+
+    session_id: str | None = None
+    time_to_first_audio_ms: float
+
+
+@app.post("/telemetry/voice")
+async def voice_telemetry(
+    req: VoiceTelemetryRequest, request: Request
+) -> dict[str, bool]:
+    """Record one client-reported time-to-first-audio sample to the
+    Prometheus histogram on the agent. Auth-gated with the same JWT
+    middleware /chat + /speak use so the metric can't be poisoned
+    by anonymous callers; the per-user-id label means a single
+    misbehaving client only affects its own bucket.
+
+    Session_id is accepted but not used as a label (high cardinality
+    would blow up Prometheus). Useful for future correlation if we
+    ever ship per-session debugging.
+
+    See prog-strength-docs/sows/streaming-tts.md.
+    """
+    auth = authenticate(request, config.jwt_signing_key)
+    AGENT_VOICE_TIME_TO_FIRST_AUDIO_SECONDS.labels(
+        user_id=auth.user_id,
+    ).observe(req.time_to_first_audio_ms / 1000.0)
+    return {"ok": True}
+
+
 async def _route_and_stream(
     messages: list[dict[str, Any]],
     user_token: str,
@@ -330,3 +387,5 @@ async def _route_and_stream(
         record_prometheus_metrics(telemetry)
         if telemetry_client is not None:
             telemetry_client.record_turn(telemetry)
+
+
