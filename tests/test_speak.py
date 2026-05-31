@@ -86,9 +86,11 @@ async def test_generate_rejects_unknown_voice():
 @pytest.mark.asyncio
 async def test_default_voice_in_supported_set():
     """Sanity: the configured default voice has to actually be in
-    OpenAI's supported set. Catches a typo before it ships.
+    OpenAI's supported set. Catches a typo before it ships. Cedar
+    is the current default per config.py (only available on
+    gpt-4o-mini-tts, not tts-1).
     """
-    assert "onyx" in SUPPORTED_VOICES
+    assert "cedar" in SUPPORTED_VOICES
 
 
 def test_quota_rollover_at_new_utc_day():

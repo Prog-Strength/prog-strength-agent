@@ -85,6 +85,7 @@ tts_generator = TTSGenerator(
     model=config.openai_tts_model,
     default_voice=config.tts_voice_default,
     daily_char_cap=config.tts_daily_char_cap_per_user,
+    instructions=config.tts_instructions,
 )
 
 # Telemetry client: fire-and-forget POSTs to the API's internal

@@ -23,12 +23,20 @@ from openai import AsyncOpenAI
 
 log = logging.getLogger(__name__)
 
-# Closed set of voices the OpenAI tts-1 / tts-1-hd models support.
-# The endpoint rejects anything outside this set with a 400 before
-# the OpenAI call so a malformed client doesn't burn an API call to
-# learn the constraint. Keep in sync with OpenAI's docs.
+# Closed set of voices we accept. The endpoint rejects anything
+# outside this set with a 400 before the OpenAI call so a malformed
+# client doesn't burn an API call to learn the constraint. The full
+# set listed here matches gpt-4o-mini-tts (our default model); the
+# older tts-1/tts-1-hd models support a strict subset (no cedar,
+# marin, ballad, verse) — picking a model-incompatible voice will
+# 400 from OpenAI itself, which is acceptable: the SOW expects ops
+# to set OPENAI_TTS_MODEL and TTS_VOICE_DEFAULT consistently. Keep
+# in sync with developers.openai.com/api/docs/guides/text-to-speech.
 SUPPORTED_VOICES: frozenset[str] = frozenset(
-    {"alloy", "echo", "fable", "onyx", "nova", "shimmer"}
+    {
+        "alloy", "ash", "ballad", "cedar", "coral", "echo", "fable",
+        "marin", "nova", "onyx", "sage", "shimmer", "verse",
+    }
 )
 
 # Max characters per individual /speak request. Lower than the per-user
@@ -134,10 +142,16 @@ class TTSGenerator:
         model: str,
         default_voice: str,
         daily_char_cap: int,
+        instructions: str = "",
     ):
         self._daily_char_cap = daily_char_cap
         self._model = model
         self._default_voice = default_voice
+        # Personality / pacing cue passed to gpt-4o-mini-tts. Empty
+        # string falls through as "no instructions" — the older
+        # tts-1 model doesn't accept the parameter anyway, and the
+        # neutral delivery is fine as a fallback.
+        self._instructions = instructions
         self._quota = _Quota()
         # Empty key means the endpoint is disabled. We track it
         # rather than failing startup so the agent boots cleanly in
@@ -190,13 +204,23 @@ class TTSGenerator:
         # the raw bytes for free — we just collect and return them.
         # No streaming back to the client in v1 (the SOW marks
         # streaming TTS as a non-goal).
+        #
+        # `instructions` is only sent when non-empty: the older
+        # tts-1/tts-1-hd models reject the field, so passing a blank
+        # string would 400 on those. With gpt-4o-mini-tts (the
+        # current default) it carries the personality cue.
         log.info(
             "speak: user=%s voice=%s chars=%d", user_id, chosen_voice, len(text)
         )
+        kwargs: dict[str, object] = {
+            "model": self._model,
+            "voice": chosen_voice,
+            "input": text,
+            "response_format": "mp3",
+        }
+        if self._instructions:
+            kwargs["instructions"] = self._instructions
         async with self._client.audio.speech.with_streaming_response.create(
-            model=self._model,
-            voice=chosen_voice,
-            input=text,
-            response_format="mp3",
+            **kwargs,
         ) as response:
             return await response.read()

@@ -37,6 +37,12 @@ class Config:
     openai_tts_model: str
     tts_voice_default: str
     tts_daily_char_cap_per_user: int
+    # Natural-language style instructions passed to gpt-4o-mini-tts.
+    # The model interprets these as personality + pacing + tone cues,
+    # so this is where we keep the Prog Strength coach's "vibe."
+    # Ignored by older tts-1/tts-1-hd models that don't accept the
+    # `instructions` param — those just fall back to default delivery.
+    tts_instructions: str
 
     @classmethod
     def from_env(cls) -> "Config":
@@ -93,13 +99,38 @@ class Config:
             cors_allowed_origins=cors_allowed_origins,
             # OpenAI TTS for /speak. Key is optional at startup —
             # /speak returns 503 when unset so local dev without an
-            # OpenAI key on hand still boots. Default voice is
-            # "onyx" per the voice-chat SOW (strength-coach feel);
-            # tts-1 is the cheap-and-fast model (vs tts-1-hd).
+            # OpenAI key on hand still boots. Defaults pick the
+            # newer gpt-4o-mini-tts model so we can use the `cedar`
+            # voice (only available on this model, not on tts-1) and
+            # pass an `instructions` string for personality + pacing.
             openai_api_key=os.environ.get("OPENAI_API_KEY", ""),
-            openai_tts_model=os.environ.get("OPENAI_TTS_MODEL", "tts-1"),
-            tts_voice_default=os.environ.get("TTS_VOICE_DEFAULT", "onyx"),
+            openai_tts_model=os.environ.get(
+                "OPENAI_TTS_MODEL", "gpt-4o-mini-tts"
+            ),
+            tts_voice_default=os.environ.get("TTS_VOICE_DEFAULT", "cedar"),
             tts_daily_char_cap_per_user=int(
                 os.environ.get("TTS_DAILY_CHAR_CAP_PER_USER", "50000")
+            ),
+            # Personality cue: knowledgeable strength coach with a
+            # hyped gym-bro energy. One env var so we can tweak the
+            # vibe without a code change. Empty string is fine — the
+            # OpenAI client just drops the parameter and the model
+            # uses its default neutral delivery.
+            tts_instructions=os.environ.get(
+                "TTS_INSTRUCTIONS",
+                (
+                    "Personality: a hyped-up strength coach who's "
+                    "genuinely stoked to help the user crush their "
+                    "workout. Friendly, encouraging, gym-bro energy "
+                    "without overdoing it. "
+                    "Pacing: FAST. Talk quickly and with momentum, "
+                    "like an energized coach mid-set who's pumped "
+                    "about what they're saying. Don't draw words "
+                    "out; don't pause between sentences. Brisk "
+                    "delivery throughout. "
+                    "Tone: warm, supportive, real enthusiasm. Think "
+                    "of a friend spotting you at the gym, hyping you "
+                    "up on the last rep."
+                ),
             ),
         )
