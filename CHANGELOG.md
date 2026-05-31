@@ -1,3 +1,10 @@
+## [0.11.1](https://github.com/Prog-Strength/prog-strength-agent/compare/v0.11.0...v0.11.1) (2026-05-31)
+
+
+### Bug Fixes
+
+* **router:** drop user input text from INFO log before CloudWatch flip ([a29380c](https://github.com/Prog-Strength/prog-strength-agent/commit/a29380c7c7e7400fa1cd3652924a1611c8663fb6))
+
 # [0.11.0](https://github.com/Prog-Strength/prog-strength-agent/compare/v0.10.0...v0.11.0) (2026-05-31)
 
 
