@@ -1,3 +1,10 @@
+# [0.12.0](https://github.com/Prog-Strength/prog-strength-agent/compare/v0.11.2...v0.12.0) (2026-05-31)
+
+
+### Features
+
+* **chat:** inject the user's local date into every chat system prompt ([35a8321](https://github.com/Prog-Strength/prog-strength-agent/commit/35a832134702b7c603c158aedcad16d404ace690))
+
 ## [0.11.2](https://github.com/Prog-Strength/prog-strength-agent/compare/v0.11.1...v0.11.2) (2026-05-31)
 
 
