@@ -112,7 +112,14 @@ class ModelRouter:
                 break
 
         tier = "complex" if "complex" in decision else "simple"
-        log.info("router: %s (text=%r)", tier, text[:80])
+        # Log the length, not the content. The full text is the user's
+        # message and we're about to start shipping these lines to
+        # CloudWatch — keep the signal (router classified SOMETHING,
+        # here's how) without exporting the message body. For deep
+        # debugging of "why did the router pick X for THIS prompt"
+        # the chat_messages table on the API has the original content
+        # keyed by session_id/timestamp.
+        log.info("router: %s (chars=%d)", tier, len(text))
         _record(telemetry, self.router_model, now_ms() - started, tier)
         return tier
 
