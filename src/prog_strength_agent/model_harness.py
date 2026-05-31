@@ -70,6 +70,7 @@ class ModelHarness:
         messages: list[dict[str, Any]],
         user_token: str,
         telemetry: TurnInstrumentation | None = None,
+        system_prompt: str | None = None,
     ) -> AsyncGenerator[bytes, None]:
         """Run the tool-use loop, yielding SSE-formatted bytes.
 
@@ -134,7 +135,12 @@ class ModelHarness:
                 async with self.client.messages.stream(
                     model=self.model,
                     max_tokens=self.max_tokens,
-                    system=SYSTEM_PROMPT,
+                    # system_prompt is supplied per-request by the
+                    # server so the date prefix (today + user's tz)
+                    # rides in on every turn. Falls back to the bare
+                    # SYSTEM_PROMPT for scripted callers that bypass
+                    # the chat endpoint.
+                    system=system_prompt or SYSTEM_PROMPT,
                     tools=tools_for_claude,
                     messages=messages,
                 ) as stream:

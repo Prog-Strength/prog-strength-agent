@@ -6,6 +6,14 @@ The MCP server stays agent-agnostic so other agents could use the same
 tools with a different prompt.
 """
 
+from __future__ import annotations
+
+import logging
+from datetime import datetime
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+log = logging.getLogger(__name__)
+
 SYSTEM_PROMPT = """\
 You are the Prog Strength training assistant — a concise, knowledgeable \
 strength-training coach for a single user who logs weightlifting workouts \
@@ -103,3 +111,55 @@ trying to figure out.
 
 Reply with ONLY the title text. No preamble, no explanation.
 """
+
+
+def build_chat_system_prompt(
+    client_timezone: str | None = None,
+    now: datetime | None = None,
+) -> str:
+    """Return SYSTEM_PROMPT with a "today's date" prefix prepended.
+
+    Called once per /chat request so the model gets the current date as
+    a hard fact — eliminates the failure mode where the LLM guesses at
+    "yesterday" / "last week" because it has no grounding for what day
+    it is. The user explicitly asked for unconditional injection over
+    keyword-matching ("two Tuesdays ago" would otherwise miss); the cost
+    is a few extra prompt tokens per turn, which is cache-friendly since
+    the bulk of SYSTEM_PROMPT is unchanged.
+
+    client_timezone is the IANA name the client detected via
+    `Intl.DateTimeFormat().resolvedOptions().timeZone`. Falls back to
+    UTC when None, empty, or unrecognized — a missing/bogus value should
+    never break /chat; it just produces a slightly less accurate date
+    on the "I'm asking near midnight" edge case.
+
+    `now` is injectable for tests. Production callers leave it None.
+    """
+    tz_label, tz = _resolve_timezone(client_timezone)
+    current = (now or datetime.now(tz)).astimezone(tz)
+    date_str = current.strftime("%Y-%m-%d")
+    weekday = current.strftime("%A")
+    prefix = (
+        f"Today's date is {date_str} ({weekday}) in the user's timezone "
+        f"({tz_label}). When the user asks about 'yesterday', 'last week', "
+        f"or any relative date, compute it from this date.\n\n"
+    )
+    return prefix + SYSTEM_PROMPT
+
+
+def _resolve_timezone(client_timezone: str | None) -> tuple[str, ZoneInfo]:
+    """Validate the IANA tz name. Returns (label, ZoneInfo) where label
+    is what we surface to the model (the user's tz if valid, "UTC"
+    otherwise). On invalid input logs a single warning so we can spot
+    a broken client without raising.
+    """
+    if not client_timezone:
+        return "UTC", ZoneInfo("UTC")
+    try:
+        return client_timezone, ZoneInfo(client_timezone)
+    except ZoneInfoNotFoundError:
+        log.warning(
+            "prompt: unrecognized client_timezone %r — falling back to UTC",
+            client_timezone,
+        )
+        return "UTC", ZoneInfo("UTC")

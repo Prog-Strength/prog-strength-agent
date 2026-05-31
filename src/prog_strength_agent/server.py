@@ -32,6 +32,7 @@ from prog_strength_agent.auth import authenticate
 from prog_strength_agent.config import Config
 from prog_strength_agent.model_harness import ModelHarness
 from prog_strength_agent.model_router import ModelRouter
+from prog_strength_agent.prompt import build_chat_system_prompt
 from prog_strength_agent.speak import SpeakError, TTSGenerator
 from prog_strength_agent.telemetry import (
     TelemetryClient,
@@ -145,6 +146,13 @@ class ChatRequest(BaseModel):
     # is the canonical generator; absence is a fallback for scripted
     # callers and older clients.
     session_id: str | None = None
+    # IANA timezone name (e.g. "America/Denver") detected by the
+    # client via Intl.DateTimeFormat().resolvedOptions().timeZone.
+    # Used to compute the user's local date for the system-prompt
+    # prefix that grounds the model in "what day is it today" —
+    # see prompt.build_chat_system_prompt. Falls back to UTC when
+    # missing or unrecognized, so older clients keep working.
+    client_timezone: str | None = None
 
 
 @app.post("/chat")
@@ -164,8 +172,15 @@ async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
         user_id=auth.user_id, session_id=req.session_id
     )
 
+    # Build the per-request system prompt with the user's local date
+    # prefixed. Done here (not inside the harness) so the prompt logic
+    # stays out of the model-loop code path — harness takes the prompt
+    # as-is and ships it to Anthropic. See
+    # prompt.build_chat_system_prompt for the date-prefix rationale.
+    system_prompt = build_chat_system_prompt(req.client_timezone)
+
     return StreamingResponse(
-        _route_and_stream(messages, auth.token, telemetry),
+        _route_and_stream(messages, auth.token, telemetry, system_prompt),
         media_type="text/event-stream",
         headers={
             # Prevent intermediaries (Caddy, browsers, proxies) from
@@ -284,6 +299,7 @@ async def _route_and_stream(
     messages: list[dict[str, Any]],
     user_token: str,
     telemetry: TurnInstrumentation,
+    system_prompt: str,
 ) -> AsyncGenerator[bytes, None]:
     """Classify the request's tier, dispatch to the matching harness.
 
@@ -300,7 +316,12 @@ async def _route_and_stream(
     try:
         tier = await router_obj.route(messages, telemetry=telemetry)
         harness = HARNESSES.get(tier, HARNESSES["simple"])
-        async for chunk in harness.stream_chat(messages, user_token, telemetry):
+        async for chunk in harness.stream_chat(
+            messages,
+            user_token,
+            telemetry,
+            system_prompt=system_prompt,
+        ):
             yield chunk
     finally:
         # Live Prometheus counters first — synchronous, in-process,
