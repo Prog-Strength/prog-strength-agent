@@ -1,3 +1,10 @@
+# [0.11.0](https://github.com/Prog-Strength/prog-strength-agent/compare/v0.10.0...v0.11.0) (2026-05-31)
+
+
+### Features
+
+* **chat:** hyped fitness-coach voice + bro-energy system prompt ([479ce4e](https://github.com/Prog-Strength/prog-strength-agent/commit/479ce4eb8b7e629393ec82b0658bcf65e365b2df))
+
 # [0.10.0](https://github.com/Prog-Strength/prog-strength-agent/compare/v0.9.1...v0.10.0) (2026-05-31)
 
 
