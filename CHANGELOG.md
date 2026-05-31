@@ -1,3 +1,10 @@
+# [0.10.0](https://github.com/Prog-Strength/prog-strength-agent/compare/v0.9.1...v0.10.0) (2026-05-31)
+
+
+### Features
+
+* **chat:** /speak endpoint for OpenAI TTS-driven voice replies ([2e055f3](https://github.com/Prog-Strength/prog-strength-agent/commit/2e055f320c06e2510d97f1dcea8ba2844a95bc35))
+
 ## [0.9.1](https://github.com/Prog-Strength/prog-strength-agent/compare/v0.9.0...v0.9.1) (2026-05-30)
 
 
