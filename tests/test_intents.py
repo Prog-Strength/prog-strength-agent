@@ -111,3 +111,28 @@ async def test_log_bodyweight_prefetch_calls_list_with_14_day_window(monkeypatch
     assert "bodyweight" in rules.lower()
     assert "205.4" in data
     assert captured_args.get("list_bodyweight", {}).get("since") is not None
+
+
+@pytest.mark.asyncio
+async def test_analyze_progress_prefetch_includes_workouts_and_macros():
+    from typing import Any
+    captured: dict[str, Any] = {}
+
+    class _CaptureSession:
+        async def call_tool(self, name: str, args: dict):
+            captured[name] = args
+            return _FakeMCPResult({
+                "list_workouts": '[' + ','.join(
+                    f'{{"id":"w-{i}","performed_at":"2026-05-{(i%28)+1:02d}T18:00:00Z","exercises":[]}}'
+                    for i in range(1, 25)
+                ) + ']',
+                "get_daily_macros": '[{"date":"2026-05-30","calories":2200,"protein_g":180,"fat_g":70,"carbs_g":230}]',
+            }[name])
+
+    rules, data = await IntentRegistry.run("analyze_progress", _CaptureSession())
+    assert "favor citing" in rules.lower() or "already have a recent window" in rules.lower()
+    # Workouts capped to 20
+    assert data.count("w-") <= 20
+    assert "2200" in data
+    assert captured.get("get_daily_macros", {}).get("since") is not None
+    assert captured.get("get_daily_macros", {}).get("until") is not None

@@ -228,6 +228,56 @@ _register(IntentSpec(
 ))
 
 
+async def _analyze_progress_prefetch(session: Any) -> dict[str, Any]:
+    now = datetime.now(timezone.utc)
+    since = (now - timedelta(days=30)).isoformat().replace("+00:00", "Z")
+    until = now.isoformat().replace("+00:00", "Z")
+    workouts_task = session.call_tool("list_workouts", {})
+    macros_task = session.call_tool("get_daily_macros", {"since": since, "until": until})
+    workouts_res, macros_res = await asyncio.gather(workouts_task, macros_task)
+    workouts = _decode_tool_result(workouts_res)
+    # API returns ~50 most-recent newest-first; take the first 20 for prompt size.
+    return {
+        "workouts": workouts[:20],
+        "daily_macros": _decode_tool_result(macros_res),
+    }
+
+
+def _analyze_progress_format(data: dict[str, Any]) -> str:
+    lines = ["RECENT WORKOUTS (last 20, most recent first):"]
+    for w in data.get("workouts", []):
+        lines.append(
+            f"- {w.get('id', '?')} · "
+            f"{w.get('performed_at', '?')} · "
+            f"{len(w.get('exercises') or [])} exercise(s)"
+        )
+    lines.append("")
+    lines.append("DAILY MACROS (last 30 days; date · kcal · P/F/C):")
+    for d in data.get("daily_macros", []):
+        lines.append(
+            f"- {d.get('date', '?')} · "
+            f"{d.get('calories', 0)} kcal · "
+            f"{d.get('protein_g', 0)}/{d.get('fat_g', 0)}/{d.get('carbs_g', 0)}"
+        )
+    return "\n".join(lines)
+
+
+_ANALYZE_PROGRESS_RULES = """\
+The user wants analysis or planning advice. You already have a recent \
+window of workouts and macros below. Favor citing specifics from this \
+data over calling more tools; only fetch more if the user asks about \
+a time range outside the included window.\
+"""
+
+
+_register(IntentSpec(
+    intent="analyze_progress",
+    rules=_ANALYZE_PROGRESS_RULES,
+    prefetch=_analyze_progress_prefetch,
+    format=_analyze_progress_format,
+))
+
+
 class IntentRegistry:
     """Static facade — no instances. Each public method is a classmethod
     so the harness can call it as `IntentRegistry.run(...)`.
