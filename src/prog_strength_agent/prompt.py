@@ -169,3 +169,17 @@ def _resolve_timezone(client_timezone: str | None) -> tuple[str, ZoneInfo]:
             client_timezone,
         )
         return "UTC", ZoneInfo("UTC")
+
+
+def compose_system_prompt(*, base: str, rules: str = "", data: str = "") -> str:
+    """Concatenate the base system prompt with optional intent-specific
+    rules and data blocks. Empty sections are skipped entirely (not
+    rendered as blank separators) so a `general` intent or a failed
+    prefetch produces a prompt visually identical to today's.
+    """
+    parts = [base]
+    if rules:
+        parts.append(rules)
+    if data:
+        parts.append(data)
+    return "\n\n".join(parts)
