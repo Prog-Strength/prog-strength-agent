@@ -27,7 +27,8 @@ from anthropic import AsyncAnthropic
 from mcp import ClientSession
 from mcp.client.streamable_http import streamablehttp_client
 
-from prog_strength_agent.prompt import SYSTEM_PROMPT
+from prog_strength_agent.intents import IntentRegistry
+from prog_strength_agent.prompt import SYSTEM_PROMPT, compose_system_prompt
 from prog_strength_agent.telemetry import (
     MessageRecord,
     ToolCallRecord,
@@ -37,6 +38,21 @@ from prog_strength_agent.telemetry import (
 )
 
 log = logging.getLogger(__name__)
+
+
+async def build_intent_aware_prompt(
+    *,
+    base: str,
+    intent: str,
+    session: Any,
+) -> str:
+    """Compose the per-turn system prompt: base + intent rules + intent
+    data. Pulled out of stream_chat so tests can pin the composition
+    without mocking the entire Anthropic SDK + MCP session.
+    """
+    rules, data = await IntentRegistry.run(intent, session)
+    return compose_system_prompt(base=base, rules=rules, data=data)
+
 
 # Cap the tool-use loop to keep a runaway model from hammering MCP in
 # an infinite cycle. Eight iterations is enough for any realistic
@@ -71,6 +87,7 @@ class ModelHarness:
         user_token: str,
         telemetry: TurnInstrumentation | None = None,
         system_prompt: str | None = None,
+        intent: str = "general",
     ) -> AsyncGenerator[bytes, None]:
         """Run the tool-use loop, yielding SSE-formatted bytes.
 
@@ -123,6 +140,22 @@ class ModelHarness:
             mcp_tools = (await session.list_tools()).tools
             tools_for_claude = _build_tool_schemas(mcp_tools)
 
+            prefetch_started = now_ms()
+            try:
+                composed_system_prompt = await build_intent_aware_prompt(
+                    base=system_prompt or SYSTEM_PROMPT,
+                    intent=intent,
+                    session=session,
+                )
+                prefetch_failed = False
+            except Exception:
+                log.exception("intent prefetch composition failed")
+                composed_system_prompt = system_prompt or SYSTEM_PROMPT
+                prefetch_failed = True
+            if telemetry is not None:
+                telemetry.intent_prefetch_duration_ms = now_ms() - prefetch_started
+                telemetry.intent_prefetch_failed = prefetch_failed
+
             # Accumulator for the assistant's user-facing text across
             # all iterations of the tool-use loop. Saved to telemetry
             # at the end as the assistant message.
@@ -135,12 +168,11 @@ class ModelHarness:
                 async with self.client.messages.stream(
                     model=self.model,
                     max_tokens=self.max_tokens,
-                    # system_prompt is supplied per-request by the
-                    # server so the date prefix (today + user's tz)
-                    # rides in on every turn. Falls back to the bare
-                    # SYSTEM_PROMPT for scripted callers that bypass
-                    # the chat endpoint.
-                    system=system_prompt or SYSTEM_PROMPT,
+                    # composed_system_prompt is assembled above from
+                    # the base prompt + intent-specific rules and
+                    # prefetched data. Falls back to base on prefetch
+                    # failure so the turn always completes.
+                    system=composed_system_prompt,
                     tools=tools_for_claude,
                     messages=messages,
                 ) as stream:
