@@ -1,3 +1,10 @@
+# [0.14.0](https://github.com/Prog-Strength/prog-strength-agent/compare/v0.13.0...v0.14.0) (2026-06-02)
+
+
+### Features
+
+* **agent:** intent-driven context enrichment ([#1](https://github.com/Prog-Strength/prog-strength-agent/issues/1)) ([5d6a1b4](https://github.com/Prog-Strength/prog-strength-agent/commit/5d6a1b42a9d5d7a1f5918582e7032ed81ec2cb1c))
+
 # [0.13.0](https://github.com/Prog-Strength/prog-strength-agent/compare/v0.12.0...v0.13.0) (2026-05-31)
 
 
