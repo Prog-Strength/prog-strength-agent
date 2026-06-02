@@ -145,10 +145,11 @@ async def _log_workout_prefetch(session: Any) -> dict[str, Any]:
     workouts_task = session.call_tool("list_workouts", {})
     catalog_res, workouts_res = await asyncio.gather(catalog_task, workouts_task)
     workouts = _decode_tool_result(workouts_res)
-    # API returns ~50 most-recent; slice to 5 for prompt size.
+    # API returns ~50 most-recent (newest first, ORDER BY performed_at
+    # DESC); take the first 5 for prompt size.
     return {
         "catalog": _decode_tool_result(catalog_res),
-        "recent_workouts": workouts[-5:],
+        "recent_workouts": workouts[:5],
     }
 
 

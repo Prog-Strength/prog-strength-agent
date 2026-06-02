@@ -76,10 +76,12 @@ async def test_log_nutrition_prefetch_failure_returns_rules_without_data():
 async def test_log_workout_prefetch_includes_catalog_and_recent_5():
     session = _FakeSession({
         "list_exercises": '[{"id":"barbell-bench-press","name":"Barbell Bench Press","muscle_groups":["chest"]},{"id":"back-squat","name":"Back Squat","muscle_groups":["quads"]}]',
-        # 10 recent workouts; the formatter should slice to 5.
+        # 10 recent workouts in production order (newest first, matching
+        # the API's `ORDER BY performed_at DESC`). The formatter slices
+        # the first 5 — those are the most recent.
         "list_workouts": '[' + ','.join(
             f'{{"id":"w-{i}","performed_at":"2026-05-{i:02d}T18:00:00Z","exercises":[]}}'
-            for i in range(1, 11)
+            for i in range(10, 0, -1)
         ) + ']',
     })
     rules, data = await IntentRegistry.run("log_workout", session)
