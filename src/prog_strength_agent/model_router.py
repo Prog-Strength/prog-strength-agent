@@ -148,10 +148,7 @@ def _record(
     telemetry.router_model = router_model
     telemetry.router_latency_ms = latency_ms
     telemetry.routed_tier = decision.tier
-    # NOTE: telemetry.intent is set by Task 16; for now this line will
-    # raise AttributeError if uncommented. Leaving the assignment OUT
-    # until Task 16 adds the field. See plan.
-    # telemetry.intent = decision.intent
+    telemetry.intent = decision.intent
 
 
 def _last_user_text(messages: list[dict[str, Any]]) -> str:

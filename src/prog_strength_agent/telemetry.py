@@ -96,6 +96,22 @@ AGENT_VOICE_TIME_TO_FIRST_AUDIO_SECONDS = Histogram(
     buckets=(0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 5.0, 8.0, 15.0),
 )
 
+# Intent classification and prefetch metrics. Cardinality bounded by
+# the (small, enumerated) set of known intents (~5 today). The prefetch
+# histogram shares the same intent label so latency can be broken down
+# per-intent in Grafana.
+AGENT_INTENT_CLASSIFICATIONS_TOTAL = Counter(
+    "agent_intent_classifications_total",
+    "Intent classifications produced by the model router.",
+    ["intent"],
+)
+AGENT_INTENT_PREFETCH_DURATION_SECONDS = Histogram(
+    "agent_intent_prefetch_duration_seconds",
+    "Time spent running an intent's prefetch tool calls (parallel asyncio.gather).",
+    ["intent"],
+    buckets=(0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.0, 5.0),
+)
+
 
 def record_prometheus_metrics(t: "TurnInstrumentation") -> None:
     """Materialize per-turn data into Prometheus counters. Called
@@ -147,6 +163,13 @@ def record_prometheus_metrics(t: "TurnInstrumentation") -> None:
             tool_name=call.tool_name
         ).observe(call.latency_ms / 1000.0)
 
+    if t.intent:
+        AGENT_INTENT_CLASSIFICATIONS_TOTAL.labels(intent=t.intent).inc()
+        if t.intent_prefetch_duration_ms > 0:
+            AGENT_INTENT_PREFETCH_DURATION_SECONDS.labels(intent=t.intent).observe(
+                t.intent_prefetch_duration_ms / 1000.0,
+            )
+
 
 @dataclass
 class ToolCallRecord:
@@ -192,6 +215,16 @@ class TurnInstrumentation:
     router_model: str = ""
     router_latency_ms: int = 0
     routed_tier: str = ""
+
+    # Intent classification — populated by ModelRouter.route().
+    # Empty string means the router never produced a value (cold
+    # exception in the classifier call); "general" is a deliberate
+    # output meaning "no specific intent recognized."
+    intent: str = ""
+
+    # Intent prefetch instrumentation — populated by ModelHarness.
+    intent_prefetch_duration_ms: int = 0
+    intent_prefetch_failed: bool = False
 
     # Main turn — populated by ModelHarness.stream_chat().
     model: str = ""
@@ -240,6 +273,36 @@ class TurnInstrumentation:
         return int((self.ended_at - self.started_at).total_seconds() * 1000)
 
 
+def _build_turn_payload(t: "TurnInstrumentation") -> dict:
+    """Marshal a TurnInstrumentation into the JSON shape the API's
+    POST /internal/telemetry/turns endpoint expects. Pulled out of
+    the client so tests can assert on the wire format without
+    poking through httpx mocks.
+    """
+    return {
+        "id": t.turn_id,
+        "user_id": t.user_id,
+        "session_id": t.session_id,
+        "model": t.model,
+        "routed_tier": t.routed_tier,
+        "router_model": t.router_model,
+        "router_latency_ms": t.router_latency_ms,
+        "input_tokens": t.input_tokens,
+        "output_tokens": t.output_tokens,
+        "cache_creation_tokens": t.cache_creation_tokens,
+        "cache_read_tokens": t.cache_read_tokens,
+        "total_latency_ms": t.total_latency_ms,
+        "time_to_first_token_ms": t.time_to_first_token_ms,
+        "completion_reason": t.completion_reason,
+        "error": t.error,
+        "started_at": _iso(t.started_at),
+        "ended_at": _iso(t.ended_at),
+        "intent": t.intent,
+        "intent_prefetch_duration_ms": t.intent_prefetch_duration_ms,
+        "intent_prefetch_failed": t.intent_prefetch_failed,
+    }
+
+
 class TelemetryClient:
     """Fire-and-forget client for the API's /internal/telemetry/*
     endpoints. Reachable only from inside the Docker network — Caddy
@@ -272,25 +335,7 @@ class TelemetryClient:
             asyncio.create_task(self._send_messages(t))
 
     async def _send_turn(self, t: TurnInstrumentation) -> None:
-        body = {
-            "id": t.turn_id,
-            "user_id": t.user_id,
-            "session_id": t.session_id,
-            "model": t.model,
-            "routed_tier": t.routed_tier,
-            "router_model": t.router_model,
-            "router_latency_ms": t.router_latency_ms,
-            "input_tokens": t.input_tokens,
-            "output_tokens": t.output_tokens,
-            "cache_creation_tokens": t.cache_creation_tokens,
-            "cache_read_tokens": t.cache_read_tokens,
-            "total_latency_ms": t.total_latency_ms,
-            "time_to_first_token_ms": t.time_to_first_token_ms,
-            "completion_reason": t.completion_reason,
-            "error": t.error,
-            "started_at": _iso(t.started_at),
-            "ended_at": _iso(t.ended_at),
-        }
+        body = _build_turn_payload(t)
         await self._post("/internal/telemetry/turns", body)
 
     async def _send_tool_calls(self, t: TurnInstrumentation) -> None:
