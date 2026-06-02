@@ -70,3 +70,24 @@ async def test_log_nutrition_prefetch_failure_returns_rules_without_data():
     rules, data = await IntentRegistry.run("log_nutrition", _FailingSession())
     assert "Assume one serving" in rules
     assert data == ""
+
+
+@pytest.mark.asyncio
+async def test_log_workout_prefetch_includes_catalog_and_recent_5():
+    session = _FakeSession({
+        "list_exercises": '[{"id":"barbell-bench-press","name":"Barbell Bench Press","muscle_groups":["chest"]},{"id":"back-squat","name":"Back Squat","muscle_groups":["quads"]}]',
+        # 10 recent workouts; the formatter should slice to 5.
+        "list_workouts": '[' + ','.join(
+            f'{{"id":"w-{i}","performed_at":"2026-05-{i:02d}T18:00:00Z","exercises":[]}}'
+            for i in range(1, 11)
+        ) + ']',
+    })
+    rules, data = await IntentRegistry.run("log_workout", session)
+    assert "exercise catalog" in rules.lower() or "look up exercise slugs" in rules.lower()
+    assert "barbell-bench-press" in data
+    assert "back-squat" in data
+    assert "EXERCISE CATALOG" in data
+    assert "RECENT WORKOUTS" in data
+    assert "w-10" in data
+    assert "w-6" in data    # 10..6 = last 5
+    assert "w-5" not in data

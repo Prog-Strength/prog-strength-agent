@@ -140,6 +140,57 @@ _register(IntentSpec(
 ))
 
 
+async def _log_workout_prefetch(session: Any) -> dict[str, Any]:
+    catalog_task = session.call_tool("list_exercises", {})
+    workouts_task = session.call_tool("list_workouts", {})
+    catalog_res, workouts_res = await asyncio.gather(catalog_task, workouts_task)
+    workouts = _decode_tool_result(workouts_res)
+    # API returns ~50 most-recent; slice to 5 for prompt size.
+    return {
+        "catalog": _decode_tool_result(catalog_res),
+        "recent_workouts": workouts[-5:],
+    }
+
+
+def _log_workout_format(data: dict[str, Any]) -> str:
+    lines = []
+    lines.append("EXERCISE CATALOG (slug · name · primary muscle groups):")
+    for e in data.get("catalog", []):
+        muscles = ", ".join(e.get("muscle_groups", []) or [])
+        lines.append(f"- {e.get('id', '?')} · {e.get('name', '?')} · {muscles}")
+    if not data.get("catalog"):
+        lines.append("- (catalog unavailable)")
+    lines.append("")
+    lines.append("RECENT WORKOUTS (id · performed_at · exercise count):")
+    for w in data.get("recent_workouts", []):
+        lines.append(
+            f"- {w.get('id', '?')} · "
+            f"{w.get('performed_at', '?')} · "
+            f"{len(w.get('exercises') or [])} exercise(s)"
+        )
+    if not data.get("recent_workouts"):
+        lines.append("- (no recent workouts logged)")
+    return "\n".join(lines)
+
+
+_LOG_WORKOUT_RULES = """\
+The user is logging a completed workout. The exercise catalog is \
+below — match the user's wording to an exercise slug without asking \
+unless genuinely ambiguous. The user's last few workouts are also \
+below; if they say "same as last time" or use a shorthand, infer \
+from those before asking. Look up exercise slugs from the catalog \
+before calling create_workout.\
+"""
+
+
+_register(IntentSpec(
+    intent="log_workout",
+    rules=_LOG_WORKOUT_RULES,
+    prefetch=_log_workout_prefetch,
+    format=_log_workout_format,
+))
+
+
 class IntentRegistry:
     """Static facade — no instances. Each public method is a classmethod
     so the harness can call it as `IntentRegistry.run(...)`.
