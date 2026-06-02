@@ -28,6 +28,7 @@ from fastapi.responses import Response, StreamingResponse
 from prometheus_fastapi_instrumentator import Instrumentator
 from pydantic import BaseModel
 
+from prog_strength_agent.api_client import APIClient
 from prog_strength_agent.auth import authenticate
 from prog_strength_agent.config import Config
 from prog_strength_agent.model_harness import ModelHarness
@@ -98,6 +99,12 @@ tts_generator = TTSGenerator(
 telemetry_client: TelemetryClient | None = (
     TelemetryClient(api_base_url=config.api_url) if config.api_url else None
 )
+
+# api_client: best-effort reader of chat_sessions.last_intent for the
+# router hint. Empty api_url disables it (same condition that disables
+# telemetry); the route handler treats None as "no hint" and the
+# classifier falls back to conversation context alone.
+api_client = APIClient(base_url=config.api_url) if config.api_url else None
 
 
 app = FastAPI(title=SERVICE, version=VERSION)
@@ -358,32 +365,32 @@ async def _route_and_stream(
     telemetry: TurnInstrumentation,
     system_prompt: str,
 ) -> AsyncGenerator[bytes, None]:
-    """Classify the request's tier, dispatch to the matching harness.
+    """Classify the request's tier+intent, dispatch to the matching
+    harness with the intent in hand, then fire telemetry on the way
+    out.
 
-    The router's failure mode is "default to simple" (the cheaper
-    tier), so even if the classifier call breaks, /chat keeps working
-    — the user may just get a Haiku-level answer to a question that
-    would have benefitted from Sonnet.
-
-    After the stream completes (success or error), fires fire-and-forget
-    telemetry POSTs to the API. Telemetry failures are logged but
-    never raised — the chat already returned, and observability
-    outages should not affect product behavior.
+    Both router and harness fail soft: a broken classifier collapses
+    to (simple, general); a broken prefetch leaves the agent with its
+    pre-SOW behavior. Either way /chat keeps streaming bytes.
     """
     try:
-        tier = await router_obj.route(messages, telemetry=telemetry)
-        harness = HARNESSES.get(tier, HARNESSES["simple"])
+        prior_intent: str | None = None
+        if api_client is not None and telemetry.session_id:
+            prior_intent = await api_client.get_session_intent(telemetry.session_id)
+
+        decision = await router_obj.route(
+            messages, telemetry=telemetry, prior_intent=prior_intent,
+        )
+        harness = HARNESSES.get(decision.tier, HARNESSES["simple"])
         async for chunk in harness.stream_chat(
             messages,
             user_token,
             telemetry,
             system_prompt=system_prompt,
+            intent=decision.intent,
         ):
             yield chunk
     finally:
-        # Live Prometheus counters first — synchronous, in-process,
-        # no failure mode. The HTTP write to the API is fire-and-
-        # forget after; a network glitch must not skip the metrics.
         record_prometheus_metrics(telemetry)
         if telemetry_client is not None:
             telemetry_client.record_turn(telemetry)
