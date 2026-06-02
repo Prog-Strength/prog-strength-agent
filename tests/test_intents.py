@@ -93,3 +93,21 @@ async def test_log_workout_prefetch_includes_catalog_and_recent_5():
     assert "w-10" in data
     assert "w-6" in data    # 10..6 = last 5
     assert "w-5" not in data
+
+
+@pytest.mark.asyncio
+async def test_log_bodyweight_prefetch_calls_list_with_14_day_window(monkeypatch):
+    from typing import Any
+    captured_args: dict[str, Any] = {}
+
+    class _CaptureSession:
+        async def call_tool(self, name: str, args: dict):
+            captured_args[name] = args
+            return _FakeMCPResult(
+                '[{"id":"b-1","weight":205.4,"unit":"lb","measured_at":"2026-05-30T07:00:00Z"}]'
+            )
+
+    rules, data = await IntentRegistry.run("log_bodyweight", _CaptureSession())
+    assert "bodyweight" in rules.lower()
+    assert "205.4" in data
+    assert captured_args.get("list_bodyweight", {}).get("since") is not None

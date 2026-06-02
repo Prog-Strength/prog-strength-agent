@@ -14,6 +14,7 @@ import asyncio
 import json
 import logging
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from typing import Any, Awaitable, Callable, Iterable
 
 log = logging.getLogger(__name__)
@@ -189,6 +190,41 @@ _register(IntentSpec(
     rules=_LOG_WORKOUT_RULES,
     prefetch=_log_workout_prefetch,
     format=_log_workout_format,
+))
+
+
+async def _log_bodyweight_prefetch(session: Any) -> dict[str, Any]:
+    since = (datetime.now(timezone.utc) - timedelta(days=14)).isoformat().replace("+00:00", "Z")
+    res = await session.call_tool("list_bodyweight", {"since": since})
+    return {"entries": _decode_tool_result(res)}
+
+
+def _log_bodyweight_format(data: dict[str, Any]) -> str:
+    entries = data.get("entries") or []
+    if not entries:
+        return "RECENT BODYWEIGHT (last 14 days): (no entries yet)"
+    lines = ["RECENT BODYWEIGHT (last 14 days, most recent first):"]
+    for e in entries:
+        lines.append(
+            f"- {e.get('measured_at', '?')} · "
+            f"{e.get('weight', '?')} {e.get('unit', '?')}"
+        )
+    return "\n".join(lines)
+
+
+_LOG_BODYWEIGHT_RULES = """\
+The user is logging a bodyweight reading. Default the unit to whatever \
+they used most recently (visible in the entries below). If the new \
+reading is meaningfully different from the recent trend, acknowledge \
+it briefly; otherwise just confirm the log.\
+"""
+
+
+_register(IntentSpec(
+    intent="log_bodyweight",
+    rules=_LOG_BODYWEIGHT_RULES,
+    prefetch=_log_bodyweight_prefetch,
+    format=_log_bodyweight_format,
 ))
 
 
