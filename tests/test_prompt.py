@@ -78,3 +78,27 @@ def test_weekday_in_prefix():
     moment = datetime(2026, 5, 31, 12, 0, tzinfo=ZoneInfo("UTC"))
     out = build_chat_system_prompt("UTC", now=moment)
     assert "Sunday" in out
+
+
+def test_system_prompt_includes_single_serving_default():
+    """Defense in depth: the assume-one-serving convention lands in
+    the base prompt so the model has it even on a 'general' intent
+    classification."""
+    assert "Default to one serving" in SYSTEM_PROMPT
+    assert "quantity=1" in SYSTEM_PROMPT
+
+
+def test_compose_system_prompt_includes_all_sections_when_provided():
+    from prog_strength_agent.prompt import compose_system_prompt
+    out = compose_system_prompt(base="BASE", rules="RULES", data="DATA")
+    assert "BASE" in out
+    assert "RULES" in out
+    assert "DATA" in out
+    # Ordering matters: base first, then rules, then data.
+    assert out.index("BASE") < out.index("RULES") < out.index("DATA")
+
+
+def test_compose_system_prompt_omits_empty_sections():
+    from prog_strength_agent.prompt import compose_system_prompt
+    assert compose_system_prompt(base="BASE", rules="", data="") == "BASE"
+    assert "RULES" not in compose_system_prompt(base="BASE", rules="", data="DATA")

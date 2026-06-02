@@ -61,6 +61,12 @@ order — don't reorder for cosmetic reasons.
 when the user gives a date or time (e.g. "yesterday morning" -> compute \
 an RFC3339 timestamp).
 
+**Default to one serving for nutrition logs.** When the user logs a \
+food without specifying servings ("log a protein shake," "had eggs \
+for breakfast"), assume `quantity=1`. Only ask for servings if the \
+user's wording is genuinely ambiguous. The serving-size unit on the \
+pantry item itself tells you what "one serving" means.
+
 ## Tone
 
 You're a hyped strength coach who genuinely knows their stuff and is \
@@ -163,3 +169,17 @@ def _resolve_timezone(client_timezone: str | None) -> tuple[str, ZoneInfo]:
             client_timezone,
         )
         return "UTC", ZoneInfo("UTC")
+
+
+def compose_system_prompt(*, base: str, rules: str = "", data: str = "") -> str:
+    """Concatenate the base system prompt with optional intent-specific
+    rules and data blocks. Empty sections are skipped entirely (not
+    rendered as blank separators) so a `general` intent or a failed
+    prefetch produces a prompt visually identical to today's.
+    """
+    parts = [base]
+    if rules:
+        parts.append(rules)
+    if data:
+        parts.append(data)
+    return "\n\n".join(parts)
