@@ -45,13 +45,14 @@ async def build_intent_aware_prompt(
     base: str,
     intent: str,
     session: Any,
-) -> str:
-    """Compose the per-turn system prompt: base + intent rules + intent
-    data. Pulled out of stream_chat so tests can pin the composition
-    without mocking the entire Anthropic SDK + MCP session.
+) -> tuple[str, bool]:
+    """Compose the per-turn system prompt and return it alongside the
+    prefetch-failed flag. Pulled out of stream_chat so tests can pin
+    the composition without mocking the entire Anthropic SDK + MCP
+    session.
     """
-    rules, data = await IntentRegistry.run(intent, session)
-    return compose_system_prompt(base=base, rules=rules, data=data)
+    rules, data, failed = await IntentRegistry.run(intent, session)
+    return compose_system_prompt(base=base, rules=rules, data=data), failed
 
 
 # Cap the tool-use loop to keep a runaway model from hammering MCP in
@@ -141,17 +142,11 @@ class ModelHarness:
             tools_for_claude = _build_tool_schemas(mcp_tools)
 
             prefetch_started = now_ms()
-            try:
-                composed_system_prompt = await build_intent_aware_prompt(
-                    base=system_prompt or SYSTEM_PROMPT,
-                    intent=intent,
-                    session=session,
-                )
-                prefetch_failed = False
-            except Exception:
-                log.exception("intent prefetch composition failed")
-                composed_system_prompt = system_prompt or SYSTEM_PROMPT
-                prefetch_failed = True
+            composed_system_prompt, prefetch_failed = await build_intent_aware_prompt(
+                base=system_prompt or SYSTEM_PROMPT,
+                intent=intent,
+                session=session,
+            )
             if telemetry is not None:
                 telemetry.intent_prefetch_duration_ms = now_ms() - prefetch_started
                 telemetry.intent_prefetch_failed = prefetch_failed

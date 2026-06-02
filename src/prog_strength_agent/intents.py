@@ -288,25 +288,27 @@ class IntentRegistry:
         return KNOWN_INTENTS
 
     @classmethod
-    async def run(cls, intent: str, session: Any) -> tuple[str, str]:
-        """Run the intent's prefetch and return (rules_block, data_block).
+    async def run(cls, intent: str, session: Any) -> tuple[str, str, bool]:
+        """Run the intent's prefetch and return (rules_block, data_block, failed).
 
-        Failure semantics: any exception inside prefetch is caught, the
-        intent's rules are returned unchanged, and the data block is
-        empty. The harness records `intent_prefetch_failed=True` based
-        on the `failed` return tuple, but this method itself never
-        raises.
+        `failed` is True when prefetch (or formatting) raised. The harness
+        reads this to set `telemetry.intent_prefetch_failed` so the
+        dashboard surfaces the failure rate. The data block is empty on
+        failure; rules are preserved so the model still gets the
+        behavioral nudge even when the data is missing.
+
+        This method itself never raises — caller doesn't need a try/except.
         """
         spec = _SPECS.get(intent)
         if spec is None:
-            return "", ""
+            return "", "", False
         try:
             data = await spec.prefetch(session)
         except Exception:  # noqa: BLE001 — broad by design
             log.exception("intent prefetch failed: intent=%s", intent)
-            return spec.rules, ""
+            return spec.rules, "", True
         try:
-            return spec.rules, spec.format(data)
+            return spec.rules, spec.format(data), False
         except Exception:
             log.exception("intent format failed: intent=%s", intent)
-            return spec.rules, ""
+            return spec.rules, "", True

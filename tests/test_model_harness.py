@@ -27,11 +27,11 @@ async def test_harness_uses_intent_registry_to_compose_prompt(monkeypatch):
     from prog_strength_agent import model_harness as mh
 
     async def fake_run(cls, intent, session):
-        return "RULES_BLOCK", "DATA_BLOCK"
+        return "RULES_BLOCK", "DATA_BLOCK", False
 
     monkeypatch.setattr(IntentRegistry, "run", classmethod(fake_run))
 
-    composed = await mh.build_intent_aware_prompt(
+    composed, failed = await mh.build_intent_aware_prompt(
         base="BASE",
         intent="log_nutrition",
         session=None,
@@ -39,3 +39,4 @@ async def test_harness_uses_intent_registry_to_compose_prompt(monkeypatch):
     assert "BASE" in composed
     assert "RULES_BLOCK" in composed
     assert "DATA_BLOCK" in composed
+    assert failed is False
