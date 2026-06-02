@@ -78,3 +78,11 @@ def test_weekday_in_prefix():
     moment = datetime(2026, 5, 31, 12, 0, tzinfo=ZoneInfo("UTC"))
     out = build_chat_system_prompt("UTC", now=moment)
     assert "Sunday" in out
+
+
+def test_system_prompt_includes_single_serving_default():
+    """Defense in depth: the assume-one-serving convention lands in
+    the base prompt so the model has it even on a 'general' intent
+    classification."""
+    assert "Default to one serving" in SYSTEM_PROMPT
+    assert "quantity=1" in SYSTEM_PROMPT
