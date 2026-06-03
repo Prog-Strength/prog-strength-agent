@@ -196,7 +196,11 @@ async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
     system_prompt = build_chat_system_prompt(req.client_timezone)
 
     inner = _route_and_stream(
-        messages, auth.token, telemetry, system_prompt
+        messages,
+        auth.token,
+        telemetry,
+        system_prompt,
+        client_timezone=req.client_timezone,
     )
     # When voice_mode is on, wrap the SSE stream with a voice_streamer
     # that buffers text deltas, detects sentence boundaries, fires
@@ -364,6 +368,8 @@ async def _route_and_stream(
     user_token: str,
     telemetry: TurnInstrumentation,
     system_prompt: str,
+    *,
+    client_timezone: str | None = None,
 ) -> AsyncGenerator[bytes, None]:
     """Classify the request's tier+intent, dispatch to the matching
     harness with the intent in hand, then fire telemetry on the way
@@ -388,6 +394,7 @@ async def _route_and_stream(
             telemetry,
             system_prompt=system_prompt,
             intent=decision.intent,
+            client_timezone=client_timezone,
         ):
             yield chunk
     finally:

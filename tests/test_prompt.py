@@ -98,6 +98,19 @@ def test_compose_system_prompt_includes_all_sections_when_provided():
     assert out.index("BASE") < out.index("RULES") < out.index("DATA")
 
 
+def test_system_prompt_nudges_get_daily_macros_for_totals():
+    """The daily-totals guidance must steer the model to get_daily_macros
+    (computed server-side) and mention the date + timezone args it needs,
+    rather than summing list_nutrition_log items itself.
+    """
+    out = build_chat_system_prompt("UTC", now=datetime(2026, 5, 31, 12, 0, tzinfo=ZoneInfo("UTC")))
+    assert "get_daily_macros" in out
+    assert "date" in out
+    assert "timezone" in out
+    # And it lives in the base prompt regardless of the date prefix.
+    assert "get_daily_macros" in SYSTEM_PROMPT
+
+
 def test_compose_system_prompt_omits_empty_sections():
     from prog_strength_agent.prompt import compose_system_prompt
     assert compose_system_prompt(base="BASE", rules="", data="") == "BASE"
