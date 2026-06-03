@@ -1,3 +1,10 @@
+## [0.14.1](https://github.com/Prog-Strength/prog-strength-agent/compare/v0.14.0...v0.14.1) (2026-06-03)
+
+
+### Bug Fixes
+
+* **telemetry:** serialize turn POST before tool-call/message POSTs to avoid FK race ([#2](https://github.com/Prog-Strength/prog-strength-agent/issues/2)) ([0706718](https://github.com/Prog-Strength/prog-strength-agent/commit/07067180aa3403f8badcb5e9815995e9aecf9ae1))
+
 # [0.14.0](https://github.com/Prog-Strength/prog-strength-agent/compare/v0.13.0...v0.14.0) (2026-06-02)
 
 
