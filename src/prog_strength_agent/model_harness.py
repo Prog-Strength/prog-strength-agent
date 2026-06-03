@@ -61,6 +61,32 @@ async def build_intent_aware_prompt(
 # follow-ups.
 MAX_TOOL_LOOP = 8
 
+# Nutrition tools that accept a `timezone` arg for day-boundary math.
+# The harness auto-injects the user's client_timezone into these calls
+# so the model never has to thread it through itself.
+_NUTRITION_TZ_TOOLS = {"list_nutrition_log", "get_daily_macros"}
+
+
+def _maybe_inject_timezone(
+    name: str,
+    tool_input: dict[str, Any],
+    client_timezone: str | None,
+) -> dict[str, Any]:
+    """Return tool_input with the user's timezone injected when the call
+    is a nutrition tool, the model didn't already supply `timezone`, and
+    a client_timezone is known.
+
+    Pure + side-effect-free on the input dict (returns a new dict) so the
+    call site can record the FINAL args in telemetry and the behavior is
+    unit-testable without driving the full Anthropic stream loop. When
+    client_timezone is None we deliberately inject nothing — the
+    downstream API fast-fails with a 400 rather than silently guessing.
+    """
+    result = dict(tool_input)
+    if name in _NUTRITION_TZ_TOOLS and "timezone" not in result and client_timezone:
+        result["timezone"] = client_timezone
+    return result
+
 
 class ModelHarness:
     """One Claude model wired up to the MCP tool layer.
@@ -89,6 +115,7 @@ class ModelHarness:
         telemetry: TurnInstrumentation | None = None,
         system_prompt: str | None = None,
         intent: str = "general",
+        client_timezone: str | None = None,
     ) -> AsyncGenerator[bytes, None]:
         """Run the tool-use loop, yielding SSE-formatted bytes.
 
@@ -222,10 +249,15 @@ class ModelHarness:
                     tool_started = datetime.now(timezone.utc)
                     tool_start_ms = now_ms()
                     tool_error: str | None = None
+                    # Auto-inject the user's timezone into nutrition tool
+                    # calls so the model never has to pass it. tool_input
+                    # is the FINAL args (post-injection) — used both for
+                    # the MCP call and the telemetry record below.
+                    tool_input = _maybe_inject_timezone(
+                        block.name, dict(block.input or {}), client_timezone
+                    )
                     try:
-                        result = await session.call_tool(
-                            block.name, dict(block.input or {})
-                        )
+                        result = await session.call_tool(block.name, tool_input)
                         text = "\n".join(
                             getattr(c, "text", str(c)) for c in result.content
                         )
@@ -242,7 +274,7 @@ class ModelHarness:
                         telemetry.tool_calls.append(
                             ToolCallRecord(
                                 tool_name=block.name,
-                                arguments_json=_safe_json(block.input),
+                                arguments_json=_safe_json(tool_input),
                                 result_summary=truncate_result(text),
                                 latency_ms=now_ms() - tool_start_ms,
                                 error=tool_error,
