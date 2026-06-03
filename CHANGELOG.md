@@ -1,3 +1,10 @@
+# [0.15.0](https://github.com/Prog-Strength/prog-strength-agent/compare/v0.14.1...v0.15.0) (2026-06-03)
+
+
+### Features
+
+* **agent:** inject client_timezone into nutrition tool calls + prompt nudge ([#3](https://github.com/Prog-Strength/prog-strength-agent/issues/3)) ([c1b6914](https://github.com/Prog-Strength/prog-strength-agent/commit/c1b691437dd1866867acdd621728a9f6d1f8368e))
+
 ## [0.14.1](https://github.com/Prog-Strength/prog-strength-agent/compare/v0.14.0...v0.14.1) (2026-06-03)
 
 
