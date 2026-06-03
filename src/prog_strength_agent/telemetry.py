@@ -324,15 +324,32 @@ class TelemetryClient:
         await self._client.aclose()
 
     def record_turn(self, t: TurnInstrumentation) -> None:
-        """Schedule the three telemetry POSTs for this turn on the
-        event loop and return immediately. Each task catches its own
-        exceptions so a single failure doesn't sink the others.
+        """Schedule the telemetry POSTs for this turn and return
+        immediately.
+
+        The turn POST is awaited before the tool-call and message POSTs
+        fire. The child tables (agent_tool_calls, agent_messages) have
+        FOREIGN KEY references to agent_turns.id, and the API enforces
+        them — racing all three POSTs concurrently lets child requests
+        arrive before the parent row is committed, the FK fires, and
+        the API returns 500. Child rows are then silently dropped.
+        Observed in prod 2026-06-03 with ~30% of recent turns missing
+        agent_messages and/or agent_tool_calls rows.
+
+        Once /turns resolves, /tool-calls and /messages fire in parallel
+        since they are siblings with no ordering dependency between them.
         """
-        asyncio.create_task(self._send_turn(t))
+        asyncio.create_task(self._send_all(t))
+
+    async def _send_all(self, t: TurnInstrumentation) -> None:
+        await self._send_turn(t)
+        coros: list = []
         if t.tool_calls:
-            asyncio.create_task(self._send_tool_calls(t))
+            coros.append(self._send_tool_calls(t))
         if t.messages:
-            asyncio.create_task(self._send_messages(t))
+            coros.append(self._send_messages(t))
+        if coros:
+            await asyncio.gather(*coros, return_exceptions=True)
 
     async def _send_turn(self, t: TurnInstrumentation) -> None:
         body = _build_turn_payload(t)
