@@ -111,6 +111,36 @@ def test_system_prompt_nudges_get_daily_macros_for_totals():
     assert "get_daily_macros" in SYSTEM_PROMPT
 
 
+def test_system_prompt_covers_custom_meal_logging():
+    """The custom-meals guidance must steer the model through the
+    pantry-first lookup, the log_custom_meal fallback, and the
+    promote-to-pantry ask. Lives in the base prompt so the model has it
+    regardless of intent classification."""
+    assert "list_pantry_items" in SYSTEM_PROMPT
+    assert "log_custom_meal" in SYSTEM_PROMPT
+    assert "create_pantry_item" in SYSTEM_PROMPT
+    # The exact save-to-pantry ask phrasing the agent should append.
+    assert "save" in SYSTEM_PROMPT
+    assert "to your pantry so I can find it next time" in SYSTEM_PROMPT
+    # The promote-to-pantry call uses serving_unit "meal".
+    assert "serving_unit" in SYSTEM_PROMPT
+    assert '"meal"' in SYSTEM_PROMPT
+
+
+def test_custom_meal_logging_survives_date_prefix():
+    """The custom-meals guidance is still present after the per-request
+    date prefix is prepended (it lives in the base, not the prefix)."""
+    out = build_chat_system_prompt(
+        "UTC", now=datetime(2026, 5, 31, 12, 0, tzinfo=ZoneInfo("UTC"))
+    )
+    assert "list_pantry_items" in out
+    assert "log_custom_meal" in out
+    assert "create_pantry_item" in out
+    assert "to your pantry so I can find it next time" in out
+    assert "serving_unit" in out
+    assert '"meal"' in out
+
+
 def test_compose_system_prompt_omits_empty_sections():
     from prog_strength_agent.prompt import compose_system_prompt
     assert compose_system_prompt(base="BASE", rules="", data="") == "BASE"
