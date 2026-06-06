@@ -1,3 +1,10 @@
+# [0.16.0](https://github.com/Prog-Strength/prog-strength-agent/compare/v0.15.0...v0.16.0) (2026-06-06)
+
+
+### Features
+
+* **agent:** prompt rule for chat-driven custom meal logging ([#4](https://github.com/Prog-Strength/prog-strength-agent/issues/4)) ([46e9fb9](https://github.com/Prog-Strength/prog-strength-agent/commit/46e9fb9b40d19cfbc136c01c0db8a2255d4983b9))
+
 # [0.15.0](https://github.com/Prog-Strength/prog-strength-agent/compare/v0.14.1...v0.15.0) (2026-06-03)
 
 
