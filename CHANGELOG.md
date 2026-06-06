@@ -1,3 +1,10 @@
+# [0.17.0](https://github.com/Prog-Strength/prog-strength-agent/compare/v0.16.0...v0.17.0) (2026-06-06)
+
+
+### Features
+
+* **agent:** log meals from a photo (vision routing + prompt) ([#5](https://github.com/Prog-Strength/prog-strength-agent/issues/5)) ([153e6bf](https://github.com/Prog-Strength/prog-strength-agent/commit/153e6bfff893cadfb172805f860846e9b81e74db))
+
 # [0.16.0](https://github.com/Prog-Strength/prog-strength-agent/compare/v0.15.0...v0.16.0) (2026-06-06)
 
 
