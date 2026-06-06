@@ -74,6 +74,13 @@ HARNESSES: dict[str, ModelHarness] = {
 }
 router_obj = ModelRouter(client=claude, router_model=config.router_model)
 
+# Vision turns force the capable tier (Sonnet 4.6 today) from the same
+# config slot the `complex` harness pins — this guarantees a turn that
+# needs to see never lands on Haiku. We reuse HARNESSES["complex"]
+# (already constructed with config.complex_model) as the vision harness
+# rather than building a second one.
+VISION_MODEL = config.complex_model
+
 # TitleGenerator reuses the cheap simple-tier model (Haiku) since
 # title summarization is a fixed-cost classification task that
 # doesn't benefit from Sonnet. Same shared AsyncAnthropic client as
@@ -363,6 +370,24 @@ async def voice_telemetry(
     return {"ok": True}
 
 
+def _has_image(messages: list[dict[str, Any]]) -> bool:
+    """True iff any user message carries an image content block.
+
+    Pure + side-effect-free (mirrors _maybe_inject_timezone) so it is
+    unit-testable without driving the routing path. Only user turns
+    count — an image in an assistant block is not a vision request.
+    """
+    for m in messages:
+        if m.get("role") != "user":
+            continue
+        content = m.get("content")
+        if isinstance(content, list):
+            for block in content:
+                if isinstance(block, dict) and block.get("type") == "image":
+                    return True
+    return False
+
+
 async def _route_and_stream(
     messages: list[dict[str, Any]],
     user_token: str,
@@ -375,11 +400,37 @@ async def _route_and_stream(
     harness with the intent in hand, then fire telemetry on the way
     out.
 
+    Vision turns short-circuit before the classifier: an image content
+    block forces the capable tier (it would silently degrade on Haiku)
+    and skips both the prior-intent lookup and the router call.
+
     Both router and harness fail soft: a broken classifier collapses
     to (simple, general); a broken prefetch leaves the agent with its
     pre-SOW behavior. Either way /chat keeps streaming bytes.
     """
     try:
+        if _has_image(messages):
+            # Vision turn: skip the prior-intent lookup and the router
+            # entirely, force the complex (vision-capable) harness, and
+            # stamp tier+intent so record_prometheus_metrics still counts
+            # the turn (it skips turns with an empty routed_tier). "general"
+            # intent is a no-op prefetch, so the prompt is the base prompt
+            # (plus the image paragraph) with no spurious prefetch.
+            telemetry.had_image = True
+            telemetry.routed_tier = "complex"
+            telemetry.intent = "general"
+            harness = HARNESSES["complex"]
+            async for chunk in harness.stream_chat(
+                messages,
+                user_token,
+                telemetry,
+                system_prompt=system_prompt,
+                intent="general",
+                client_timezone=client_timezone,
+            ):
+                yield chunk
+            return
+
         prior_intent: str | None = None
         if api_client is not None and telemetry.session_id:
             prior_intent = await api_client.get_session_intent(telemetry.session_id)

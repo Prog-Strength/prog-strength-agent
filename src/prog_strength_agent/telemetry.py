@@ -222,6 +222,11 @@ class TurnInstrumentation:
     # output meaning "no specific intent recognized."
     intent: str = ""
 
+    # True when the user's turn carried an image content block — set by
+    # server._route_and_stream when it short-circuits the classifier and
+    # forces the vision-capable tier. Lets us measure photo-logging usage.
+    had_image: bool = False
+
     # Intent prefetch instrumentation — populated by ModelHarness.
     intent_prefetch_duration_ms: int = 0
     intent_prefetch_failed: bool = False
@@ -300,6 +305,7 @@ def _build_turn_payload(t: "TurnInstrumentation") -> dict:
         "intent": t.intent,
         "intent_prefetch_duration_ms": t.intent_prefetch_duration_ms,
         "intent_prefetch_failed": t.intent_prefetch_failed,
+        "had_image": t.had_image,
     }
 
 
