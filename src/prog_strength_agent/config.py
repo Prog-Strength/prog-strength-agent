@@ -43,6 +43,13 @@ class Config:
     # Ignored by older tts-1/tts-1-hd models that don't accept the
     # `instructions` param — those just fall back to default delivery.
     tts_instructions: str
+    # When true, /chat and /speak pre-check GET /me/usage via the
+    # UsageGate and return 429 when the user is over their daily
+    # allowance. Defaults false so the first deploy lands the TTS
+    # telemetry writes without changing user-facing behavior; flip to
+    # true once telemetry is validated in prod. See
+    # prog-strength-docs/sows/per-user-daily-usage-cap.md.
+    usage_gate_enabled: bool
 
     @classmethod
     def from_env(cls) -> "Config":
@@ -64,9 +71,17 @@ class Config:
         # is hosted on Vercel so /chat is always cross-origin; without
         # this the browser blocks the request before it ever leaves.
         cors_raw = os.environ.get("CORS_ALLOWED_ORIGINS", "")
-        cors_allowed_origins = tuple(
-            o.strip() for o in cors_raw.split(",") if o.strip()
-        )
+        cors_allowed_origins = tuple(o.strip() for o in cors_raw.split(",") if o.strip())
+
+        # Enforcement flag for the usage gate. Truthy parse so any of
+        # 1/true/yes/on (case-insensitive) enables it; everything else
+        # (including the unset default "false") leaves it off.
+        usage_gate_enabled = os.environ.get("USAGE_GATE_ENABLED", "false").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }
 
         return cls(
             anthropic_api_key=anthropic_api_key,
@@ -86,15 +101,9 @@ class Config:
             # uncommon analytical / planning case. Router uses Haiku
             # because the classification task itself is structured
             # (single-word output, well-bounded prompt).
-            simple_model=os.environ.get(
-                "CLAUDE_MODEL_SIMPLE", "claude-haiku-4-5-20251001"
-            ),
-            complex_model=os.environ.get(
-                "CLAUDE_MODEL_COMPLEX", "claude-sonnet-4-6"
-            ),
-            router_model=os.environ.get(
-                "CLAUDE_MODEL_ROUTER", "claude-haiku-4-5-20251001"
-            ),
+            simple_model=os.environ.get("CLAUDE_MODEL_SIMPLE", "claude-haiku-4-5-20251001"),
+            complex_model=os.environ.get("CLAUDE_MODEL_COMPLEX", "claude-sonnet-4-6"),
+            router_model=os.environ.get("CLAUDE_MODEL_ROUTER", "claude-haiku-4-5-20251001"),
             max_tokens=int(os.environ.get("CLAUDE_MAX_TOKENS", "2048")),
             cors_allowed_origins=cors_allowed_origins,
             # OpenAI TTS for /speak. Key is optional at startup —
@@ -104,13 +113,9 @@ class Config:
             # voice (only available on this model, not on tts-1) and
             # pass an `instructions` string for personality + pacing.
             openai_api_key=os.environ.get("OPENAI_API_KEY", ""),
-            openai_tts_model=os.environ.get(
-                "OPENAI_TTS_MODEL", "gpt-4o-mini-tts"
-            ),
+            openai_tts_model=os.environ.get("OPENAI_TTS_MODEL", "gpt-4o-mini-tts"),
             tts_voice_default=os.environ.get("TTS_VOICE_DEFAULT", "cedar"),
-            tts_daily_char_cap_per_user=int(
-                os.environ.get("TTS_DAILY_CHAR_CAP_PER_USER", "50000")
-            ),
+            tts_daily_char_cap_per_user=int(os.environ.get("TTS_DAILY_CHAR_CAP_PER_USER", "50000")),
             # Personality cue: knowledgeable strength coach with a
             # hyped gym-bro energy. One env var so we can tweak the
             # vibe without a code change. Empty string is fine — the
@@ -133,4 +138,5 @@ class Config:
                     "up on the last rep."
                 ),
             ),
+            usage_gate_enabled=usage_gate_enabled,
         )

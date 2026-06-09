@@ -87,7 +87,7 @@ def pop_complete_sentences(buffer: str) -> tuple[list[str], str]:
         # abbreviation we recognize, keep scanning past this match.
         candidate = buffer[pos : match.end(1)]
         word_match = re.search(r"\S+$", candidate)
-        last_word = (word_match.group(0).lower() if word_match else "")
+        last_word = word_match.group(0).lower() if word_match else ""
         if last_word in _ABBREVIATIONS:
             continue
         end_of_sep = match.end(2)
@@ -174,7 +174,8 @@ async def voice_streamer(
     inner: AsyncGenerator[bytes, None],
     *,
     user_id: str,
-    tts: "TTSGenerator",
+    tts: TTSGenerator,
+    session_id: str | None = None,
 ) -> AsyncGenerator[bytes, None]:
     """Wrap the chat SSE stream with per-sentence TTS audio_chunks.
 
@@ -227,7 +228,12 @@ async def voice_streamer(
                 if not cleaned:
                     continue
                 task = asyncio.create_task(
-                    tts.generate(user_id=user_id, text=cleaned, voice=None)
+                    tts.generate(
+                        user_id=user_id,
+                        text=cleaned,
+                        voice=None,
+                        session_id=session_id,
+                    )
                 )
                 audio_tasks.append((index, cleaned, task))
                 index += 1
@@ -240,7 +246,12 @@ async def voice_streamer(
             cleaned = strip_markdown(buffer)
             if cleaned:
                 task = asyncio.create_task(
-                    tts.generate(user_id=user_id, text=cleaned, voice=None)
+                    tts.generate(
+                        user_id=user_id,
+                        text=cleaned,
+                        voice=None,
+                        session_id=session_id,
+                    )
                 )
                 audio_tasks.append((index, cleaned, task))
                 index += 1

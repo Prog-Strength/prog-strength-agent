@@ -26,6 +26,108 @@ from prog_strength_agent.speak import (
     _DailyCounter,
     _Quota,
 )
+from prog_strength_agent.telemetry import SpeakCallRecord
+
+
+class _FakeStreamingResponse:
+    """Stand-in for the OpenAI SDK's streaming-response context manager.
+    `create(...)` returns this; `__aenter__` yields self; `read()`
+    returns canned mp3 bytes.
+    """
+
+    def __init__(self, payload: bytes = b"mp3", error: Exception | None = None):
+        self._payload = payload
+        self._error = error
+
+    async def __aenter__(self):
+        if self._error is not None:
+            raise self._error
+        return self
+
+    async def __aexit__(self, *exc):
+        return False
+
+    async def read(self) -> bytes:
+        return self._payload
+
+
+class _FakeSpeech:
+    def __init__(self, cm: _FakeStreamingResponse):
+        self._cm = cm
+        self.with_streaming_response = self
+
+    def create(self, **kwargs):
+        return self._cm
+
+
+class _FakeAudio:
+    def __init__(self, cm: _FakeStreamingResponse):
+        self.speech = _FakeSpeech(cm)
+
+
+class _FakeOpenAI:
+    def __init__(self, cm: _FakeStreamingResponse):
+        self.audio = _FakeAudio(cm)
+
+
+def _gen_with_fake_client(records: list, *, error: Exception | None = None):
+    """Build a TTSGenerator whose OpenAI client is a fake and whose
+    on_speak hook appends to `records`.
+    """
+    gen = TTSGenerator(
+        api_key="sk-test",
+        model="gpt-4o-mini-tts",
+        default_voice="cedar",
+        daily_char_cap=10_000,
+        on_speak=records.append,
+    )
+    # Replace the real OpenAI client with the fake context manager.
+    cm = _FakeStreamingResponse(error=error) if error else _FakeStreamingResponse()
+    gen._client = _FakeOpenAI(cm)
+    return gen
+
+
+@pytest.mark.asyncio
+async def test_generate_records_speak_on_success():
+    records: list[SpeakCallRecord] = []
+    gen = _gen_with_fake_client(records)
+    audio = await gen.generate(user_id="u1", text="Hello there", voice="alloy", session_id="sess-1")
+    assert audio == b"mp3"
+    assert len(records) == 1
+    rec = records[0]
+    assert rec.user_id == "u1"
+    assert rec.chars == len("Hello there")
+    assert rec.model == "gpt-4o-mini-tts"
+    assert rec.voice == "alloy"
+    assert rec.session_id == "sess-1"
+    assert rec.error is None
+
+
+@pytest.mark.asyncio
+async def test_generate_records_speak_on_failure():
+    records: list[SpeakCallRecord] = []
+    gen = _gen_with_fake_client(records, error=RuntimeError("openai exploded"))
+    with pytest.raises(RuntimeError):
+        await gen.generate(user_id="u1", text="boom text", voice=None)
+    # Still recorded one row on the failure path, chars unchanged,
+    # error captured, voice defaulted.
+    assert len(records) == 1
+    rec = records[0]
+    assert rec.chars == len("boom text")
+    assert rec.voice == "cedar"
+    assert rec.error == "openai exploded"
+
+
+@pytest.mark.asyncio
+async def test_generate_does_not_record_on_validation_failure():
+    """Rejections before the OpenAI call (no external spend) must not
+    produce a telemetry row.
+    """
+    records: list[SpeakCallRecord] = []
+    gen = _gen_with_fake_client(records)
+    with pytest.raises(UnknownVoice):
+        await gen.generate(user_id="u1", text="hi", voice="elvis")
+    assert records == []
 
 
 @pytest.mark.asyncio

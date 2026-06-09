@@ -42,6 +42,7 @@ from prog_strength_agent.telemetry import (
     record_prometheus_metrics,
 )
 from prog_strength_agent.title import TitleGenerator
+from prog_strength_agent.usage_gate import CapExceeded, UsageGate
 from prog_strength_agent.version import SERVICE, VERSION
 from prog_strength_agent.voice_stream import voice_streamer
 
@@ -87,24 +88,30 @@ VISION_MODEL = config.complex_model
 # the harnesses + router — no extra connection pool.
 title_generator = TitleGenerator(client=claude, model=config.simple_model)
 
+# Telemetry client: fire-and-forget POSTs to the API's internal
+# endpoints. Disabled when api_url is empty (local dev without the
+# API container running) — chat keeps working, telemetry just
+# doesn't get written. Constructed before the TTSGenerator so its
+# record_speak can be wired in as the TTS telemetry hook.
+telemetry_client: TelemetryClient | None = (
+    TelemetryClient(api_base_url=config.api_url) if config.api_url else None
+)
+
 # TTSGenerator owns the OpenAI client + the per-user daily char
 # counter. Lives as a module-level singleton so the counter survives
 # across requests; uvicorn workers are one process at our scale.
-# See prog-strength-docs/sows/voice-chat.md.
+# The on_speak hook fires a fire-and-forget POST to
+# /internal/telemetry/speak after each OpenAI call (success or
+# failure) so the API can bill the characters; None when telemetry is
+# disabled. See prog-strength-docs/sows/voice-chat.md and
+# prog-strength-docs/sows/per-user-daily-usage-cap.md.
 tts_generator = TTSGenerator(
     api_key=config.openai_api_key,
     model=config.openai_tts_model,
     default_voice=config.tts_voice_default,
     daily_char_cap=config.tts_daily_char_cap_per_user,
     instructions=config.tts_instructions,
-)
-
-# Telemetry client: fire-and-forget POSTs to the API's internal
-# endpoints. Disabled when api_url is empty (local dev without the
-# API container running) — chat keeps working, telemetry just
-# doesn't get written.
-telemetry_client: TelemetryClient | None = (
-    TelemetryClient(api_base_url=config.api_url) if config.api_url else None
+    on_speak=telemetry_client.record_speak if telemetry_client else None,
 )
 
 # api_client: best-effort reader of chat_sessions.last_intent for the
@@ -112,6 +119,16 @@ telemetry_client: TelemetryClient | None = (
 # telemetry); the route handler treats None as "no hint" and the
 # classifier falls back to conversation context alone.
 api_client = APIClient(base_url=config.api_url) if config.api_url else None
+
+# UsageGate: pre-call daily-allowance check over the API's
+# GET /me/usage. Disabled when api_url is empty (no API to ask) OR
+# when USAGE_GATE_ENABLED is false (first deploy lands telemetry
+# writes without enforcing). A disabled gate's check_or_raise is a
+# no-op. See prog-strength-docs/sows/per-user-daily-usage-cap.md.
+usage_gate = UsageGate(
+    api_base_url=config.api_url,
+    enabled=config.usage_gate_enabled and bool(config.api_url),
+)
 
 
 app = FastAPI(title=SERVICE, version=VERSION)
@@ -179,7 +196,7 @@ class ChatRequest(BaseModel):
 
 
 @app.post("/chat")
-async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
+async def chat(req: ChatRequest, request: Request) -> Response:
     """SSE-stream a chat turn.
 
     Auth happens up-front so a 401 surfaces as a normal HTTP status
@@ -189,11 +206,27 @@ async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
     extra HTTP request.
     """
     auth = authenticate(request, config.jwt_signing_key)
+
+    # Pre-call usage gate. A capped user gets a 429 before any Claude
+    # tokens are spent. Soft-allow + no-op-when-disabled live inside
+    # check_or_raise, so this is a cheap call on the happy path.
+    try:
+        await usage_gate.check_or_raise(
+            user_id=auth.user_id,
+            token=auth.token,
+            tz=req.client_timezone,
+            surface="chat",
+        )
+    except CapExceeded as e:
+        return Response(
+            content=str(e),
+            status_code=429,
+            media_type="text/plain; charset=utf-8",
+        )
+
     messages: list[dict[str, Any]] = [m.model_dump() for m in req.messages]
 
-    telemetry = TurnInstrumentation.new(
-        user_id=auth.user_id, session_id=req.session_id
-    )
+    telemetry = TurnInstrumentation.new(user_id=auth.user_id, session_id=req.session_id)
 
     # Build the per-request system prompt with the user's local date
     # prefixed. Done here (not inside the harness) so the prompt logic
@@ -215,7 +248,12 @@ async def chat(req: ChatRequest, request: Request) -> StreamingResponse:
     # alongside the original text deltas. Off → no buffering, no TTS,
     # behavior is identical to the pre-streaming-tts /chat.
     stream = (
-        voice_streamer(inner, user_id=auth.user_id, tts=tts_generator)
+        voice_streamer(
+            inner,
+            user_id=auth.user_id,
+            tts=tts_generator,
+            session_id=telemetry.session_id,
+        )
         if req.voice_mode
         else inner
     )
@@ -281,6 +319,11 @@ class SpeakRequest(BaseModel):
 
     text: str
     voice: str | None = None
+    # Chat session this TTS call belongs to, threaded into the
+    # telemetry row so TTS spend can be joined to the conversation
+    # that drove it. Nullable — /speak is sometimes called outside a
+    # session context.
+    session_id: str | None = None
 
 
 @app.post("/speak")
@@ -302,11 +345,31 @@ async def speak(req: SpeakRequest, request: Request) -> Response:
     network) → 500 with a sanitized message.
     """
     auth = authenticate(request, config.jwt_signing_key)
+
+    # Pre-call usage gate (first belt). The TTSGenerator._Quota char
+    # cap is the second belt and still runs inside generate(). tz is
+    # None here — /speak doesn't carry the client's timezone, so the
+    # API falls back to UTC for the window.
+    try:
+        await usage_gate.check_or_raise(
+            user_id=auth.user_id,
+            token=auth.token,
+            tz=None,
+            surface="speak",
+        )
+    except CapExceeded as e:
+        return Response(
+            content=str(e),
+            status_code=429,
+            media_type="text/plain; charset=utf-8",
+        )
+
     try:
         audio = await tts_generator.generate(
             user_id=auth.user_id,
             text=req.text,
             voice=req.voice,
+            session_id=req.session_id,
         )
     except SpeakError as e:
         # The exception's status carries the intended HTTP code;
@@ -348,9 +411,7 @@ class VoiceTelemetryRequest(BaseModel):
 
 
 @app.post("/telemetry/voice")
-async def voice_telemetry(
-    req: VoiceTelemetryRequest, request: Request
-) -> dict[str, bool]:
+async def voice_telemetry(req: VoiceTelemetryRequest, request: Request) -> dict[str, bool]:
     """Record one client-reported time-to-first-audio sample to the
     Prometheus histogram on the agent. Auth-gated with the same JWT
     middleware /chat + /speak use so the metric can't be poisoned
@@ -436,7 +497,9 @@ async def _route_and_stream(
             prior_intent = await api_client.get_session_intent(telemetry.session_id)
 
         decision = await router_obj.route(
-            messages, telemetry=telemetry, prior_intent=prior_intent,
+            messages,
+            telemetry=telemetry,
+            prior_intent=prior_intent,
         )
         harness = HARNESSES.get(decision.tier, HARNESSES["simple"])
         async for chunk in harness.stream_chat(
@@ -452,5 +515,3 @@ async def _route_and_stream(
         record_prometheus_metrics(telemetry)
         if telemetry_client is not None:
             telemetry_client.record_turn(telemetry)
-
-
