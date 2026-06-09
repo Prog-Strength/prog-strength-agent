@@ -1,3 +1,10 @@
+# [0.18.0](https://github.com/Prog-Strength/prog-strength-agent/compare/v0.17.0...v0.18.0) (2026-06-09)
+
+
+### Features
+
+* **agent:** per-user daily usage gate (429) + TTS spend telemetry ([#6](https://github.com/Prog-Strength/prog-strength-agent/issues/6)) ([3e99723](https://github.com/Prog-Strength/prog-strength-agent/commit/3e99723999588c6c274766ccd0cc649a7fd68164))
+
 # [0.17.0](https://github.com/Prog-Strength/prog-strength-agent/compare/v0.16.0...v0.17.0) (2026-06-06)
 
 
