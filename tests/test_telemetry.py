@@ -3,18 +3,81 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import respx
 from httpx import Response
 
 from prog_strength_agent.telemetry import (
     MessageRecord,
+    SpeakCallRecord,
     TelemetryClient,
     ToolCallRecord,
     TurnInstrumentation,
+    _build_speak_payload,
     _build_turn_payload,
 )
+
+
+def _speak_record() -> SpeakCallRecord:
+    now = datetime.now(UTC)
+    return SpeakCallRecord(
+        id="speak-1",
+        user_id="u-1",
+        session_id="s-1",
+        model="gpt-4o-mini-tts",
+        chars=184,
+        voice="cedar",
+        started_at=now,
+        ended_at=now,
+        error=None,
+    )
+
+
+def test_speak_payload_shape():
+    body = _build_speak_payload(_speak_record())
+    assert body["id"] == "speak-1"
+    assert body["user_id"] == "u-1"
+    assert body["session_id"] == "s-1"
+    assert body["model"] == "gpt-4o-mini-tts"
+    assert body["chars"] == 184
+    assert body["voice"] == "cedar"
+    assert body["error"] is None
+    # Timestamps serialized as RFC3339 with a trailing Z.
+    assert body["started_at"].endswith("Z")
+    assert body["ended_at"].endswith("Z")
+
+
+async def test_record_speak_posts_once():
+    client = TelemetryClient("http://api:8080")
+    paths: list[str] = []
+    bodies: list[dict] = []
+
+    def record(request):
+        paths.append(request.url.path)
+        import json as _json
+
+        bodies.append(_json.loads(request.content))
+        return Response(204)
+
+    with respx.mock(base_url="http://api:8080") as mock:
+        mock.post("/internal/telemetry/speak").mock(side_effect=record)
+        client.record_speak(_speak_record())
+        await asyncio.sleep(0.05)
+
+    await client.aclose()
+    assert paths == ["/internal/telemetry/speak"]
+    assert bodies[0]["chars"] == 184
+
+
+async def test_record_speak_swallows_failure():
+    client = TelemetryClient("http://api:8080")
+    with respx.mock(base_url="http://api:8080") as mock:
+        mock.post("/internal/telemetry/speak").mock(return_value=Response(500))
+        # Fire-and-forget; the failure must not propagate.
+        client.record_speak(_speak_record())
+        await asyncio.sleep(0.05)
+    await client.aclose()
 
 
 def test_payload_includes_intent_fields():
@@ -55,8 +118,8 @@ async def test_record_turn_serializes_turn_before_dependents():
             result_summary="{}",
             latency_ms=10,
             error=None,
-            started_at=datetime.now(timezone.utc),
-            ended_at=datetime.now(timezone.utc),
+            started_at=datetime.now(UTC),
+            ended_at=datetime.now(UTC),
         )
     )
 

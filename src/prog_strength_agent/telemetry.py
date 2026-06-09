@@ -20,7 +20,7 @@ import logging
 import time
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import httpx
 from prometheus_client import Counter, Histogram
@@ -144,9 +144,9 @@ def record_prometheus_metrics(t: "TurnInstrumentation") -> None:
         ("cache_read", t.cache_read_tokens),
     ):
         if count > 0:
-            AGENT_TOKENS_TOTAL.labels(
-                direction=direction, model=t.model, tier=t.routed_tier
-            ).inc(count)
+            AGENT_TOKENS_TOTAL.labels(direction=direction, model=t.model, tier=t.routed_tier).inc(
+                count
+            )
 
     # Tool calls — one Prometheus event per MCP invocation recorded
     # during the turn. The harness already timed each call and stamped
@@ -154,14 +154,12 @@ def record_prometheus_metrics(t: "TurnInstrumentation") -> None:
     # records into Counter/Histogram bumps here.
     for call in t.tool_calls:
         outcome = "error" if call.error else "ok"
-        AGENT_TOOL_CALLS_TOTAL.labels(
-            tool_name=call.tool_name, outcome=outcome
-        ).inc()
+        AGENT_TOOL_CALLS_TOTAL.labels(tool_name=call.tool_name, outcome=outcome).inc()
         # latency_ms is integer milliseconds; the histogram is in
         # seconds to match Prometheus convention.
-        AGENT_TOOL_CALL_DURATION_SECONDS.labels(
-            tool_name=call.tool_name
-        ).observe(call.latency_ms / 1000.0)
+        AGENT_TOOL_CALL_DURATION_SECONDS.labels(tool_name=call.tool_name).observe(
+            call.latency_ms / 1000.0
+        )
 
     if t.intent:
         AGENT_INTENT_CLASSIFICATIONS_TOTAL.labels(intent=t.intent).inc()
@@ -195,6 +193,48 @@ class MessageRecord:
     role: str  # "user" | "assistant"
     content: str
     token_count: int | None = None
+
+
+@dataclass
+class SpeakCallRecord:
+    """One /speak (OpenAI TTS) call worth persisting. Mirrors the
+    columns of the API's agent_speak_calls table and the body of
+    POST /internal/telemetry/speak. Constructed by TTSGenerator.generate
+    after the OpenAI call returns (success or failure).
+
+    `chars` is the same len(text) charged against TTSGenerator._Quota —
+    the two counts must not drift. `session_id`/`error` are nullable;
+    `error` is non-null when OpenAI rejected the call (recorded so a
+    retry-on-failure loop can't escape the cap).
+    """
+
+    id: str
+    user_id: str
+    session_id: str | None
+    model: str
+    chars: int
+    voice: str
+    started_at: datetime
+    ended_at: datetime
+    error: str | None = None
+
+
+def _build_speak_payload(r: "SpeakCallRecord") -> dict:
+    """Marshal a SpeakCallRecord into the JSON shape the API's
+    POST /internal/telemetry/speak endpoint expects. Pulled out so
+    tests can assert on the wire format directly.
+    """
+    return {
+        "id": r.id,
+        "user_id": r.user_id,
+        "session_id": r.session_id,
+        "model": r.model,
+        "chars": r.chars,
+        "voice": r.voice,
+        "started_at": _iso(r.started_at),
+        "ended_at": _iso(r.ended_at),
+        "error": r.error,
+    }
 
 
 @dataclass
@@ -244,12 +284,8 @@ class TurnInstrumentation:
     tool_calls: list[ToolCallRecord] = field(default_factory=list)
     messages: list[MessageRecord] = field(default_factory=list)
 
-    started_at: datetime = field(
-        default_factory=lambda: datetime.now(timezone.utc)
-    )
-    ended_at: datetime = field(
-        default_factory=lambda: datetime.now(timezone.utc)
-    )
+    started_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    ended_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     @classmethod
     def new(cls, user_id: str, session_id: str | None) -> "TurnInstrumentation":
@@ -270,7 +306,7 @@ class TurnInstrumentation:
         """
         self.completion_reason = completion_reason
         self.error = error
-        self.ended_at = datetime.now(timezone.utc)
+        self.ended_at = datetime.now(UTC)
 
     @property
     def total_latency_ms(self) -> int:
@@ -357,6 +393,20 @@ class TelemetryClient:
         if coros:
             await asyncio.gather(*coros, return_exceptions=True)
 
+    def record_speak(self, record: SpeakCallRecord) -> None:
+        """Schedule a fire-and-forget POST of one TTS call to
+        /internal/telemetry/speak and return immediately.
+
+        Same posture as record_turn: failures log and are dropped on
+        the agent side (broad except in _post). The /speak request has
+        already returned its audio by the time this fires.
+        """
+        asyncio.create_task(self._send_speak(record))
+
+    async def _send_speak(self, record: SpeakCallRecord) -> None:
+        body = _build_speak_payload(record)
+        await self._post("/internal/telemetry/speak", body)
+
     async def _send_turn(self, t: TurnInstrumentation) -> None:
         body = _build_turn_payload(t)
         await self._post("/internal/telemetry/turns", body)
@@ -414,7 +464,7 @@ class TelemetryClient:
 def _iso(dt: datetime) -> str:
     """RFC3339 timestamp the Go API parses with time.Parse(time.RFC3339, …)."""
     if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
+        dt = dt.replace(tzinfo=UTC)
     return dt.isoformat().replace("+00:00", "Z")
 
 

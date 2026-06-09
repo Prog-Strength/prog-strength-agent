@@ -35,7 +35,7 @@ class FakeTTS:
         self.delays = delays or {}
 
     async def generate(
-        self, *, user_id: str, text: str, voice: str | None
+        self, *, user_id: str, text: str, voice: str | None, session_id: str | None = None
     ) -> bytes:
         self.calls.append(text)
         if text in self.delays:
@@ -55,7 +55,9 @@ async def _drain(inner_events: list[dict[str, Any]]) -> list[dict[str, Any]]:
     fake = FakeTTS()
     out: list[dict[str, Any]] = []
     async for chunk_bytes in voice_streamer(
-        inner(), user_id="u1", tts=fake  # type: ignore[arg-type]
+        inner(),
+        user_id="u1",
+        tts=fake,  # type: ignore[arg-type]
     ):
         text = chunk_bytes.decode()
         assert text.startswith("data: ")
@@ -163,7 +165,9 @@ async def test_audio_chunks_emit_in_order_despite_out_of_order_completion():
     fake = FakeTTS(delays={"Slow first.": 0.05})
     chunks: list[dict[str, Any]] = []
     async for raw in voice_streamer(
-        inner(), user_id="u1", tts=fake  # type: ignore[arg-type]
+        inner(),
+        user_id="u1",
+        tts=fake,  # type: ignore[arg-type]
     ):
         s = raw.decode()
         if not s.startswith("data: "):
@@ -200,7 +204,9 @@ async def test_disabled_tts_falls_through_to_plain_stream():
 
     out: list[dict[str, Any]] = []
     async for raw in voice_streamer(
-        inner(), user_id="u1", tts=DisabledTTS()  # type: ignore[arg-type]
+        inner(),
+        user_id="u1",
+        tts=DisabledTTS(),  # type: ignore[arg-type]
     ):
         s = raw.decode()
         if s.startswith("data: "):
@@ -233,7 +239,9 @@ async def test_tts_failure_for_one_sentence_skips_that_chunk_only():
 
     chunks: list[dict[str, Any]] = []
     async for raw in voice_streamer(
-        inner(), user_id="u1", tts=FlakyTTS()  # type: ignore[arg-type]
+        inner(),
+        user_id="u1",
+        tts=FlakyTTS(),  # type: ignore[arg-type]
     ):
         s = raw.decode()
         if not s.startswith("data: "):

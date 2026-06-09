@@ -16,10 +16,14 @@ from __future__ import annotations
 
 import logging
 import threading
+import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 
 from openai import AsyncOpenAI
+
+from prog_strength_agent.telemetry import SpeakCallRecord
 
 log = logging.getLogger(__name__)
 
@@ -34,8 +38,19 @@ log = logging.getLogger(__name__)
 # in sync with developers.openai.com/api/docs/guides/text-to-speech.
 SUPPORTED_VOICES: frozenset[str] = frozenset(
     {
-        "alloy", "ash", "ballad", "cedar", "coral", "echo", "fable",
-        "marin", "nova", "onyx", "sage", "shimmer", "verse",
+        "alloy",
+        "ash",
+        "ballad",
+        "cedar",
+        "coral",
+        "echo",
+        "fable",
+        "marin",
+        "nova",
+        "onyx",
+        "sage",
+        "shimmer",
+        "verse",
     }
 )
 
@@ -115,9 +130,7 @@ class _Quota:
                 current = _DailyCounter(day=today, chars=0)
                 self.counters[user_id] = current
             if current.chars + chars > daily_cap:
-                raise QuotaExceeded(
-                    f"daily TTS character cap reached ({daily_cap} chars/day)"
-                )
+                raise QuotaExceeded(f"daily TTS character cap reached ({daily_cap} chars/day)")
             current.chars += chars
 
 
@@ -143,6 +156,7 @@ class TTSGenerator:
         default_voice: str,
         daily_char_cap: int,
         instructions: str = "",
+        on_speak: Callable[[SpeakCallRecord], None] | None = None,
     ):
         self._daily_char_cap = daily_char_cap
         self._model = model
@@ -152,13 +166,19 @@ class TTSGenerator:
         # tts-1 model doesn't accept the parameter anyway, and the
         # neutral delivery is fine as a fallback.
         self._instructions = instructions
+        # Fire-and-forget telemetry hook. server.py passes
+        # telemetry_client.record_speak; None disables the write
+        # (local dev without the API, or telemetry disabled). Chosen
+        # over injecting the whole TelemetryClient because the client
+        # is constructed *after* the TTSGenerator in server.py and a
+        # plain callback keeps this module's dependency surface to one
+        # dataclass import rather than the full client.
+        self._on_speak = on_speak
         self._quota = _Quota()
         # Empty key means the endpoint is disabled. We track it
         # rather than failing startup so the agent boots cleanly in
         # local dev without OPENAI_API_KEY on hand.
-        self._client: AsyncOpenAI | None = (
-            AsyncOpenAI(api_key=api_key) if api_key else None
-        )
+        self._client: AsyncOpenAI | None = AsyncOpenAI(api_key=api_key) if api_key else None
 
     @property
     def default_voice(self) -> str:
@@ -174,21 +194,30 @@ class TTSGenerator:
         user_id: str,
         text: str,
         voice: str | None,
+        session_id: str | None = None,
     ) -> bytes:
         """Validate inputs, charge the per-user quota, call OpenAI,
         return the mp3 bytes. Raises a SpeakError subclass on any
         failure — the FastAPI handler maps the subclass to an HTTP
         status. The OpenAI client itself can also raise; those
         propagate as a 500 via the handler's catch-all.
+
+        After the OpenAI call returns — on both success and failure —
+        a SpeakCallRecord is fired via the on_speak hook so the API can
+        bill the characters. The recorded `chars` is the same len(text)
+        charged against _Quota; the error path sets `error=str(e)` but
+        still records the chars (so a retry-on-failure loop can't escape
+        the daily cap by always failing).
+
+        Validation/quota rejections (raised before the OpenAI call) are
+        NOT recorded — no external spend happened.
         """
         if self._client is None:
             raise ServiceDisabled("TTS is not configured (OPENAI_API_KEY unset)")
         if not text or not text.strip():
             raise TextRequired("text is required")
         if len(text) > MAX_TEXT_LEN:
-            raise TextTooLong(
-                f"text exceeds {MAX_TEXT_LEN}-character per-request cap"
-            )
+            raise TextTooLong(f"text exceeds {MAX_TEXT_LEN}-character per-request cap")
         chosen_voice = voice or self._default_voice
         if chosen_voice not in SUPPORTED_VOICES:
             raise UnknownVoice(
@@ -209,9 +238,7 @@ class TTSGenerator:
         # tts-1/tts-1-hd models reject the field, so passing a blank
         # string would 400 on those. With gpt-4o-mini-tts (the
         # current default) it carries the personality cue.
-        log.info(
-            "speak: user=%s voice=%s chars=%d", user_id, chosen_voice, len(text)
-        )
+        log.info("speak: user=%s voice=%s chars=%d", user_id, chosen_voice, len(text))
         kwargs: dict[str, object] = {
             "model": self._model,
             "voice": chosen_voice,
@@ -220,7 +247,61 @@ class TTSGenerator:
         }
         if self._instructions:
             kwargs["instructions"] = self._instructions
-        async with self._client.audio.speech.with_streaming_response.create(
-            **kwargs,
-        ) as response:
-            return await response.read()
+
+        started_at = datetime.now(UTC)
+        try:
+            async with self._client.audio.speech.with_streaming_response.create(
+                **kwargs,
+            ) as response:
+                audio = await response.read()
+        except Exception as e:
+            self._record_speak(
+                user_id=user_id,
+                session_id=session_id,
+                chars=len(text),
+                voice=chosen_voice,
+                started_at=started_at,
+                error=str(e),
+            )
+            raise
+        self._record_speak(
+            user_id=user_id,
+            session_id=session_id,
+            chars=len(text),
+            voice=chosen_voice,
+            started_at=started_at,
+            error=None,
+        )
+        return audio
+
+    def _record_speak(
+        self,
+        *,
+        user_id: str,
+        session_id: str | None,
+        chars: int,
+        voice: str,
+        started_at: datetime,
+        error: str | None,
+    ) -> None:
+        """Fire the telemetry hook for one TTS call. No-op when no hook
+        is wired (local dev / telemetry disabled). The hook itself is
+        fire-and-forget; we never let it raise into the /speak path.
+        """
+        if self._on_speak is None:
+            return
+        record = SpeakCallRecord(
+            id=str(uuid.uuid4()),
+            user_id=user_id,
+            session_id=session_id,
+            model=self._model,
+            chars=chars,
+            voice=voice,
+            started_at=started_at,
+            ended_at=datetime.now(UTC),
+            error=error,
+        )
+        try:
+            self._on_speak(record)
+        except Exception:
+            log.exception("speak: telemetry record_speak hook failed")
