@@ -1,3 +1,10 @@
+# [0.19.0](https://github.com/Prog-Strength/prog-strength-agent/compare/v0.18.0...v0.19.0) (2026-06-10)
+
+
+### Features
+
+* **agent:** inject display_name and height into the chat system prompt ([#7](https://github.com/Prog-Strength/prog-strength-agent/issues/7)) ([3c1f9a3](https://github.com/Prog-Strength/prog-strength-agent/commit/3c1f9a335739af5814fb2f64acf10b10ffced333))
+
 # [0.18.0](https://github.com/Prog-Strength/prog-strength-agent/compare/v0.17.0...v0.18.0) (2026-06-09)
 
 
