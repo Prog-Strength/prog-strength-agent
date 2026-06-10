@@ -158,6 +158,8 @@ Reply with ONLY the title text. No preamble, no explanation.
 def build_chat_system_prompt(
     client_timezone: str | None = None,
     now: datetime | None = None,
+    display_name: str | None = None,
+    height_cm: float | None = None,
 ) -> str:
     """Return SYSTEM_PROMPT with a "today's date" prefix prepended.
 
@@ -176,6 +178,20 @@ def build_chat_system_prompt(
     on the "I'm asking near midnight" edge case.
 
     `now` is injectable for tests. Production callers leave it None.
+
+    display_name and height_cm come from the user's resolved profile,
+    threaded in by the same per-request bootstrap that injects the
+    timezone (the web client carries the resolved profile it already
+    holds for the sidebar). When display_name is non-empty an identity
+    line — "You are talking to <name>. They are <h> cm tall." — is
+    prepended after the date prefix; height is appended only when set.
+    A missing name omits the identity line entirely (height without a
+    name reads oddly). height_cm is rendered with :g so 180.0 -> "180".
+
+    Height is conversational context, not a body-composition signal: the
+    appended guidance forbids the agent from volunteering height-derived
+    inferences (BMI, "you should weigh X"); it answers only if asked,
+    without editorializing.
     """
     tz_label, tz = _resolve_timezone(client_timezone)
     current = (now or datetime.now(tz)).astimezone(tz)
@@ -186,7 +202,21 @@ def build_chat_system_prompt(
         f"({tz_label}). When the user asks about 'yesterday', 'last week', "
         f"or any relative date, compute it from this date.\n\n"
     )
-    return prefix + SYSTEM_PROMPT
+
+    identity = ""
+    if display_name:
+        identity = f"You are talking to {display_name}."
+        if height_cm is not None:
+            identity += f" They are {height_cm:g} cm tall."
+        identity += (
+            " Their height is conversational context only — do NOT volunteer "
+            "height-derived body-composition inferences (BMI, ideal bodyweight, "
+            '"you should weigh X for your frame"). Only reference their height '
+            "if they explicitly ask, and answer plainly without editorializing."
+            "\n\n"
+        )
+
+    return prefix + identity + SYSTEM_PROMPT
 
 
 def _resolve_timezone(client_timezone: str | None) -> tuple[str, ZoneInfo]:

@@ -186,6 +186,16 @@ class ChatRequest(BaseModel):
     # see prompt.build_chat_system_prompt. Falls back to UTC when
     # missing or unrecognized, so older clients keep working.
     client_timezone: str | None = None
+    # Resolved-profile identity threaded into the system prompt, sourced
+    # from the same GET /me the web client already holds for the sidebar.
+    # display_name is the name the agent should call the user by;
+    # height_cm is canonical cm (clients convert at the display edge).
+    # Both default to None so older clients that don't send them keep
+    # working — a missing name simply omits the identity line. See
+    # prompt.build_chat_system_prompt for how they're rendered, and
+    # prog-strength-docs/sows/user-profile-and-preferences.md.
+    display_name: str | None = None
+    height_cm: float | None = None
     # When true, the server runs the streaming-TTS pipeline alongside
     # the existing text streaming: text deltas pass through unchanged
     # AND new audio_chunk SSE events carry per-sentence mp3 audio for
@@ -233,7 +243,11 @@ async def chat(req: ChatRequest, request: Request) -> Response:
     # stays out of the model-loop code path — harness takes the prompt
     # as-is and ships it to Anthropic. See
     # prompt.build_chat_system_prompt for the date-prefix rationale.
-    system_prompt = build_chat_system_prompt(req.client_timezone)
+    system_prompt = build_chat_system_prompt(
+        req.client_timezone,
+        display_name=req.display_name,
+        height_cm=req.height_cm,
+    )
 
     inner = _route_and_stream(
         messages,

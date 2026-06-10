@@ -145,3 +145,73 @@ def test_compose_system_prompt_omits_empty_sections():
     from prog_strength_agent.prompt import compose_system_prompt
     assert compose_system_prompt(base="BASE", rules="", data="") == "BASE"
     assert "RULES" not in compose_system_prompt(base="BASE", rules="", data="DATA")
+
+
+_NOW = datetime(2026, 5, 31, 12, 0, tzinfo=ZoneInfo("UTC"))
+
+
+def test_display_name_adds_identity_line():
+    """A non-empty display_name produces an identity line so the agent
+    calls the user by the name they picked."""
+    out = build_chat_system_prompt("UTC", now=_NOW, display_name="Sam")
+    assert "You are talking to Sam." in out
+    # Identity sits after the date prefix but before the base prompt.
+    assert out.index("Today's date is") < out.index("You are talking to Sam.")
+    assert out.index("You are talking to Sam.") < out.index(SYSTEM_PROMPT)
+
+
+def test_height_adds_cm_tall_clause():
+    """height_cm present -> a 'cm tall' clause; 180.0 renders as '180'
+    (no trailing .0) via the :g format."""
+    out = build_chat_system_prompt("UTC", now=_NOW, display_name="Sam", height_cm=180.0)
+    assert "They are 180 cm tall." in out
+    assert "180.0" not in out
+    assert "cm tall" in out
+
+
+def test_non_integer_height_renders_decimals():
+    """:g keeps meaningful fractional digits (e.g. 177.5)."""
+    out = build_chat_system_prompt("UTC", now=_NOW, display_name="Sam", height_cm=177.5)
+    assert "They are 177.5 cm tall." in out
+
+
+def test_height_none_omits_height_clause():
+    """No height -> identity line present but no 'cm tall' clause."""
+    out = build_chat_system_prompt("UTC", now=_NOW, display_name="Sam")
+    assert "You are talking to Sam." in out
+    assert "cm tall" not in out
+
+
+def test_no_display_name_omits_identity_line():
+    """Name None/empty -> no identity line at all (and no height clause)."""
+    out_none = build_chat_system_prompt("UTC", now=_NOW)
+    out_empty = build_chat_system_prompt("UTC", now=_NOW, display_name="")
+    for out in (out_none, out_empty):
+        assert "You are talking to" not in out
+        assert "cm tall" not in out
+    # Height without a name is still suppressed (name always present in practice).
+    out_height_only = build_chat_system_prompt("UTC", now=_NOW, height_cm=180.0)
+    assert "You are talking to" not in out_height_only
+    assert "cm tall" not in out_height_only
+
+
+def test_height_guidance_warns_against_body_composition_inferences():
+    """The prepended context tells the agent height is context-only and
+    not to volunteer BMI / body-composition inferences."""
+    out = build_chat_system_prompt("UTC", now=_NOW, display_name="Sam", height_cm=180.0)
+    assert "conversational context only" in out
+    assert "BMI" in out
+    # Guidance lives in the prepended context, NOT the static base prompt.
+    assert "conversational context only" not in SYSTEM_PROMPT
+
+
+def test_identity_does_not_disturb_timezone_prefix():
+    """The date prefix is unchanged when identity fields are supplied."""
+    out = build_chat_system_prompt(
+        "America/Denver",
+        now=datetime(2026, 6, 1, 5, 0, tzinfo=ZoneInfo("UTC")),
+        display_name="Sam",
+        height_cm=180.0,
+    )
+    assert out.startswith("Today's date is 2026-05-31")
+    assert "(America/Denver)" in out
