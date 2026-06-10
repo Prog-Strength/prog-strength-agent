@@ -106,6 +106,56 @@ def test_speak_passes_through_when_allowed(client, monkeypatch):
     assert resp.headers["content-type"] == "audio/mpeg"
 
 
+def test_chat_threads_profile_into_system_prompt(client, monkeypatch):
+    """A /chat request carrying display_name + height_cm builds a system
+    prompt with the identity line, captured at the _route_and_stream
+    boundary (mirrors how the gate tests stub the stream)."""
+    monkeypatch.setattr(server, "usage_gate", _AllowGate())
+
+    captured: dict[str, str] = {}
+
+    async def _capture_stream(messages, token, telemetry, system_prompt, **kwargs):
+        captured["system_prompt"] = system_prompt
+        yield b'data: {"type": "done"}\n\n'
+
+    monkeypatch.setattr(server, "_route_and_stream", _capture_stream)
+
+    resp = client.post(
+        "/chat",
+        headers=_auth_headers(),
+        json={
+            "messages": [{"role": "user", "content": "hi"}],
+            "display_name": "Sam",
+            "height_cm": 180.0,
+        },
+    )
+    assert resp.status_code == 200
+    assert "You are talking to Sam." in captured["system_prompt"]
+    assert "They are 180 cm tall." in captured["system_prompt"]
+
+
+def test_chat_without_profile_fields_still_works(client, monkeypatch):
+    """Older clients that omit display_name/height_cm keep working and
+    produce a prompt with no identity line."""
+    monkeypatch.setattr(server, "usage_gate", _AllowGate())
+
+    captured: dict[str, str] = {}
+
+    async def _capture_stream(messages, token, telemetry, system_prompt, **kwargs):
+        captured["system_prompt"] = system_prompt
+        yield b'data: {"type": "done"}\n\n'
+
+    monkeypatch.setattr(server, "_route_and_stream", _capture_stream)
+
+    resp = client.post(
+        "/chat",
+        headers=_auth_headers(),
+        json={"messages": [{"role": "user", "content": "hi"}]},
+    )
+    assert resp.status_code == 200
+    assert "You are talking to" not in captured["system_prompt"]
+
+
 def test_disabled_gate_short_circuits_both(client, monkeypatch):
     """A disabled gate's check_or_raise is a no-op even if usage would
     be capped — neither /chat nor /speak should 429.
