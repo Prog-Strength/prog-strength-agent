@@ -3,17 +3,28 @@
     "id": "cfa-chicken-minis-10",
     "category": "chain",
     "message": "log 10 chicken minis from chick fil a for breakfast",
-    "expect": { "calories": 900, "protein_g": 48, "fat_g": 33, "carbs_g": 103 },
+    "expect": {
+      "calories": 900,
+      "protein_g": 48,
+      "fat_g": 33,
+      "carbs_g": 103
+    },
     "tolerance_pct": 15,
     "source": "https://www.chick-fil-a.com/menu/chick-n-minis (4-count: 360 cal, 19P, 13F, 41C)",
     "notes": "quantity-scaling case: 4-count published values x 2.5",
-    "verified_at": "2026-06-11"
+    "verified_at": "2026-06-11",
+    "smoke": true
   },
   {
     "id": "cfa-chicken-minis-4",
     "category": "chain",
     "message": "I had a 4 count chicken minis from Chick-fil-A this morning",
-    "expect": { "calories": 360, "protein_g": 19, "fat_g": 13, "carbs_g": 41 },
+    "expect": {
+      "calories": 360,
+      "protein_g": 19,
+      "fat_g": 13,
+      "carbs_g": 41
+    },
     "tolerance_pct": 15,
     "source": "https://www.chick-fil-a.com/menu/chick-n-minis",
     "verified_at": "2026-06-11"
@@ -22,16 +33,27 @@
     "id": "cfa-sandwich",
     "category": "chain",
     "message": "log a chick fil a chicken sandwich for lunch",
-    "expect": { "calories": 420, "protein_g": 28, "fat_g": 18, "carbs_g": 41 },
+    "expect": {
+      "calories": 420,
+      "protein_g": 28,
+      "fat_g": 18,
+      "carbs_g": 41
+    },
     "tolerance_pct": 15,
     "source": "https://www.chick-fil-a.com/menu/chick-fil-a-chicken-sandwich",
-    "verified_at": "2026-06-11"
+    "verified_at": "2026-06-11",
+    "smoke": true
   },
   {
     "id": "cfa-waffle-fries-medium",
     "category": "chain",
     "message": "also had a medium waffle fries from chick fil a",
-    "expect": { "calories": 420, "protein_g": 5, "fat_g": 24, "carbs_g": 45 },
+    "expect": {
+      "calories": 420,
+      "protein_g": 5,
+      "fat_g": 24,
+      "carbs_g": 45
+    },
     "tolerance_pct": 15,
     "source": "https://www.chick-fil-a.com/menu/waffle-potato-fries",
     "verified_at": "2026-06-11"
@@ -40,7 +62,12 @@
     "id": "cfa-nuggets-12",
     "category": "chain",
     "message": "log a 12 count chick fil a nuggets",
-    "expect": { "calories": 380, "protein_g": 40, "fat_g": 18, "carbs_g": 16 },
+    "expect": {
+      "calories": 380,
+      "protein_g": 40,
+      "fat_g": 18,
+      "carbs_g": 16
+    },
     "tolerance_pct": 15,
     "source": "https://www.chick-fil-a.com/menu/chick-fil-a-nuggets (12-count)",
     "verified_at": "2026-06-11"
@@ -49,7 +76,12 @@
     "id": "mcd-big-mac",
     "category": "chain",
     "message": "I ate a big mac from mcdonalds for dinner",
-    "expect": { "calories": 590, "protein_g": 25, "fat_g": 34, "carbs_g": 46 },
+    "expect": {
+      "calories": 590,
+      "protein_g": 25,
+      "fat_g": 34,
+      "carbs_g": 46
+    },
     "tolerance_pct": 15,
     "source": "https://www.mcdonalds.com/us/en-us/product/big-mac.html",
     "verified_at": "2026-06-11"
@@ -58,26 +90,43 @@
     "id": "mcd-big-mac-2",
     "category": "chain",
     "message": "log 2 big macs",
-    "expect": { "calories": 1180, "protein_g": 50, "fat_g": 68, "carbs_g": 92 },
+    "expect": {
+      "calories": 1180,
+      "protein_g": 50,
+      "fat_g": 68,
+      "carbs_g": 92
+    },
     "tolerance_pct": 15,
     "source": "https://www.mcdonalds.com/us/en-us/product/big-mac.html (x2)",
     "notes": "quantity-scaling case",
-    "verified_at": "2026-06-11"
+    "verified_at": "2026-06-11",
+    "smoke": true
   },
   {
     "id": "mcd-mcnuggets-10",
     "category": "chain",
     "message": "had a 10 piece chicken mcnuggets from mcdonald's",
-    "expect": { "calories": 410, "protein_g": 23, "fat_g": 24, "carbs_g": 25 },
+    "expect": {
+      "calories": 410,
+      "protein_g": 23,
+      "fat_g": 24,
+      "carbs_g": 25
+    },
     "tolerance_pct": 15,
     "source": "https://www.mcdonalds.com/us/en-us/product/chicken-mcnuggets-10-piece.html",
-    "verified_at": "2026-06-11"
+    "verified_at": "2026-06-11",
+    "smoke": true
   },
   {
     "id": "mcd-mcnuggets-20",
     "category": "chain",
     "message": "log a 20 piece mcnuggets, dinner",
-    "expect": { "calories": 830, "protein_g": 46, "fat_g": 49, "carbs_g": 51 },
+    "expect": {
+      "calories": 830,
+      "protein_g": 46,
+      "fat_g": 49,
+      "carbs_g": 51
+    },
     "tolerance_pct": 15,
     "source": "https://www.mcdonalds.com/us/en-us/product/chicken-mcnuggets-20-piece.html",
     "notes": "quantity-scaling case: 2x the 10-piece",
@@ -87,7 +136,12 @@
     "id": "mcd-large-fries",
     "category": "chain",
     "message": "I got a large fries from mcdonalds",
-    "expect": { "calories": 480, "protein_g": 7, "fat_g": 23, "carbs_g": 63 },
+    "expect": {
+      "calories": 480,
+      "protein_g": 7,
+      "fat_g": 23,
+      "carbs_g": 63
+    },
     "tolerance_pct": 15,
     "source": "https://www.mcdonalds.com/us/en-us/product/large-french-fries.html",
     "verified_at": "2026-06-11"
@@ -96,7 +150,12 @@
     "id": "mcd-qpc",
     "category": "chain",
     "message": "log a quarter pounder with cheese",
-    "expect": { "calories": 520, "protein_g": 30, "fat_g": 26, "carbs_g": 42 },
+    "expect": {
+      "calories": 520,
+      "protein_g": 30,
+      "fat_g": 26,
+      "carbs_g": 42
+    },
     "tolerance_pct": 15,
     "source": "https://www.mcdonalds.com/us/en-us/product/quarter-pounder-with-cheese.html",
     "verified_at": "2026-06-11"
@@ -105,7 +164,12 @@
     "id": "mcd-egg-mcmuffin",
     "category": "chain",
     "message": "egg mcmuffin for breakfast, log it",
-    "expect": { "calories": 310, "protein_g": 17, "fat_g": 13, "carbs_g": 30 },
+    "expect": {
+      "calories": 310,
+      "protein_g": 17,
+      "fat_g": 13,
+      "carbs_g": 30
+    },
     "tolerance_pct": 15,
     "source": "https://www.mcdonalds.com/us/en-us/product/egg-mcmuffin.html",
     "verified_at": "2026-06-11"
@@ -114,7 +178,12 @@
     "id": "mcd-egg-mcmuffin-2",
     "category": "chain",
     "message": "I had two egg mcmuffins from McDonald's this morning",
-    "expect": { "calories": 620, "protein_g": 34, "fat_g": 26, "carbs_g": 60 },
+    "expect": {
+      "calories": 620,
+      "protein_g": 34,
+      "fat_g": 26,
+      "carbs_g": 60
+    },
     "tolerance_pct": 15,
     "source": "https://www.mcdonalds.com/us/en-us/product/egg-mcmuffin.html (x2)",
     "notes": "quantity-scaling case",
@@ -124,7 +193,12 @@
     "id": "mcd-sausage-mcmuffin-egg",
     "category": "chain",
     "message": "log a sausage mcmuffin with egg",
-    "expect": { "calories": 480, "protein_g": 20, "fat_g": 31, "carbs_g": 30 },
+    "expect": {
+      "calories": 480,
+      "protein_g": 20,
+      "fat_g": 31,
+      "carbs_g": 30
+    },
     "tolerance_pct": 15,
     "source": "https://www.mcdonalds.com/us/en-us/product/sausage-mcmuffin-with-egg.html",
     "verified_at": "2026-06-11"
@@ -133,17 +207,28 @@
     "id": "chipotle-chicken-bowl-guac",
     "category": "chain",
     "message": "log a chipotle chicken burrito bowl with white rice, black beans, fajita veggies and guac",
-    "expect": { "calories": 770, "protein_g": 47, "fat_g": 34.5, "carbs_g": 77 },
+    "expect": {
+      "calories": 770,
+      "protein_g": 47,
+      "fat_g": 34.5,
+      "carbs_g": 77
+    },
     "tolerance_pct": 20,
     "source": "https://www.chipotle.com/nutrition-calculator (rice 210 + black beans 130 + chicken 180 + fajita 20 + guac 230)",
     "notes": "itemized build; modifier-handling case",
-    "verified_at": "2026-06-11"
+    "verified_at": "2026-06-11",
+    "smoke": true
   },
   {
     "id": "chipotle-chicken-bowl-half",
     "category": "chain",
     "message": "I ate half of a chipotle chicken bowl with white rice, black beans, fajita veggies and guac, saving the rest for later",
-    "expect": { "calories": 385, "protein_g": 23.5, "fat_g": 17.3, "carbs_g": 38.5 },
+    "expect": {
+      "calories": 385,
+      "protein_g": 23.5,
+      "fat_g": 17.3,
+      "carbs_g": 38.5
+    },
     "tolerance_pct": 20,
     "source": "https://www.chipotle.com/nutrition-calculator (half of the 770-cal build)",
     "notes": "fractional-quantity case",
@@ -153,7 +238,12 @@
     "id": "chipotle-steak-tacos-3",
     "category": "chain",
     "message": "3 steak tacos from chipotle, soft flour tortillas with cheese and mild salsa",
-    "expect": { "calories": 555, "protein_g": 33, "fat_g": 25.5, "carbs_g": 50 },
+    "expect": {
+      "calories": 555,
+      "protein_g": 33,
+      "fat_g": 25.5,
+      "carbs_g": 50
+    },
     "tolerance_pct": 20,
     "source": "https://www.chipotle.com/nutrition-calculator (3 tortillas 250 + steak 150 + cheese 110 + salsa 45)",
     "verified_at": "2026-06-11"
@@ -162,7 +252,12 @@
     "id": "subway-turkey-footlong",
     "category": "chain",
     "message": "log a footlong turkey sub from subway on italian bread with lettuce tomato and onions, no cheese no mayo",
-    "expect": { "calories": 560, "protein_g": 36, "fat_g": 7, "carbs_g": 92 },
+    "expect": {
+      "calories": 560,
+      "protein_g": 36,
+      "fat_g": 7,
+      "carbs_g": 92
+    },
     "tolerance_pct": 20,
     "source": "https://www.subway.com/en-us/menunutrition (2x 6-inch Oven Roasted Turkey 280)",
     "notes": "modifier-handling case (no cheese/mayo)",
@@ -172,17 +267,28 @@
     "id": "taco-bell-crunchy-taco-3",
     "category": "chain",
     "message": "I ordered 3 crunchy tacos from taco bell",
-    "expect": { "calories": 510, "protein_g": 24, "fat_g": 27, "carbs_g": 39 },
+    "expect": {
+      "calories": 510,
+      "protein_g": 24,
+      "fat_g": 27,
+      "carbs_g": 39
+    },
     "tolerance_pct": 15,
     "source": "https://www.tacobell.com/food/tacos/crunchy-taco (170 cal each)",
     "notes": "quantity-scaling case",
-    "verified_at": "2026-06-11"
+    "verified_at": "2026-06-11",
+    "smoke": true
   },
   {
     "id": "taco-bell-crunchwrap",
     "category": "chain",
     "message": "log a crunchwrap supreme",
-    "expect": { "calories": 530, "protein_g": 16, "fat_g": 21, "carbs_g": 71 },
+    "expect": {
+      "calories": 530,
+      "protein_g": 16,
+      "fat_g": 21,
+      "carbs_g": 71
+    },
     "tolerance_pct": 15,
     "source": "https://www.tacobell.com/food/specialties/crunchwrap-supreme",
     "verified_at": "2026-06-11"
@@ -191,7 +297,12 @@
     "id": "taco-bell-bean-burrito",
     "category": "chain",
     "message": "had a bean burrito from taco bell as a snack",
-    "expect": { "calories": 350, "protein_g": 13, "fat_g": 9, "carbs_g": 54 },
+    "expect": {
+      "calories": 350,
+      "protein_g": 13,
+      "fat_g": 9,
+      "carbs_g": 54
+    },
     "tolerance_pct": 15,
     "source": "https://www.tacobell.com/food/burritos/bean-burrito",
     "verified_at": "2026-06-11"
@@ -200,7 +311,12 @@
     "id": "bk-whopper",
     "category": "chain",
     "message": "log a whopper from burger king",
-    "expect": { "calories": 670, "protein_g": 28, "fat_g": 40, "carbs_g": 49 },
+    "expect": {
+      "calories": 670,
+      "protein_g": 28,
+      "fat_g": 40,
+      "carbs_g": 49
+    },
     "tolerance_pct": 15,
     "source": "https://www.bk.com/menu/picker-15db9b25-7654-43c1-8950-9f5b026b0a85 (Whopper)",
     "verified_at": "2026-06-11"
@@ -209,7 +325,12 @@
     "id": "wendys-baconator",
     "category": "chain",
     "message": "I ate a baconator from wendy's, dinner",
-    "expect": { "calories": 960, "protein_g": 58, "fat_g": 65, "carbs_g": 39 },
+    "expect": {
+      "calories": 960,
+      "protein_g": 58,
+      "fat_g": 65,
+      "carbs_g": 39
+    },
     "tolerance_pct": 15,
     "source": "https://www.wendys.com/en-us/menu/baconator",
     "verified_at": "2026-06-11"
@@ -218,7 +339,12 @@
     "id": "wendys-spicy-chicken",
     "category": "chain",
     "message": "log a wendy's spicy chicken sandwich",
-    "expect": { "calories": 500, "protein_g": 27, "fat_g": 20, "carbs_g": 52 },
+    "expect": {
+      "calories": 500,
+      "protein_g": 27,
+      "fat_g": 20,
+      "carbs_g": 52
+    },
     "tolerance_pct": 15,
     "source": "https://www.wendys.com/en-us/menu/spicy-chicken-sandwich",
     "verified_at": "2026-06-11"
@@ -227,7 +353,12 @@
     "id": "kfc-original-breast",
     "category": "chain",
     "message": "had an original recipe chicken breast from KFC",
-    "expect": { "calories": 390, "protein_g": 39, "fat_g": 21, "carbs_g": 11 },
+    "expect": {
+      "calories": 390,
+      "protein_g": 39,
+      "fat_g": 21,
+      "carbs_g": 11
+    },
     "tolerance_pct": 15,
     "source": "https://www.kfc.com/nutrition (Original Recipe breast)",
     "verified_at": "2026-06-11"
@@ -236,7 +367,12 @@
     "id": "popeyes-chicken-sandwich",
     "category": "chain",
     "message": "log a popeyes classic chicken sandwich",
-    "expect": { "calories": 700, "protein_g": 28, "fat_g": 42, "carbs_g": 50 },
+    "expect": {
+      "calories": 700,
+      "protein_g": 28,
+      "fat_g": 42,
+      "carbs_g": 50
+    },
     "tolerance_pct": 15,
     "source": "https://www.popeyes.com/nutritional-information (Classic Chicken Sandwich)",
     "verified_at": "2026-06-11"
@@ -245,16 +381,27 @@
     "id": "innout-double-double",
     "category": "chain",
     "message": "I got a double double from in n out",
-    "expect": { "calories": 670, "protein_g": 37, "fat_g": 41, "carbs_g": 39 },
+    "expect": {
+      "calories": 670,
+      "protein_g": 37,
+      "fat_g": 41,
+      "carbs_g": 39
+    },
     "tolerance_pct": 15,
     "source": "https://www.in-n-out.com/menu/nutrition-info (Double-Double w/ onion)",
-    "verified_at": "2026-06-11"
+    "verified_at": "2026-06-11",
+    "smoke": true
   },
   {
     "id": "fiveguys-little-cheeseburger",
     "category": "chain",
     "message": "log a little cheeseburger from five guys",
-    "expect": { "calories": 550, "protein_g": 30, "fat_g": 32, "carbs_g": 39 },
+    "expect": {
+      "calories": 550,
+      "protein_g": 30,
+      "fat_g": 32,
+      "carbs_g": 39
+    },
     "tolerance_pct": 15,
     "source": "https://www.fiveguys.com/menu (Little Cheeseburger)",
     "verified_at": "2026-06-11"
@@ -263,7 +410,12 @@
     "id": "panda-orange-chicken",
     "category": "chain",
     "message": "had orange chicken from panda express, just the entree",
-    "expect": { "calories": 490, "protein_g": 25, "fat_g": 23, "carbs_g": 51 },
+    "expect": {
+      "calories": 490,
+      "protein_g": 25,
+      "fat_g": 23,
+      "carbs_g": 51
+    },
     "tolerance_pct": 15,
     "source": "https://www.pandaexpress.com/menu/the-original-orange-chicken",
     "verified_at": "2026-06-11"
@@ -272,7 +424,12 @@
     "id": "panda-orange-chicken-chow-mein",
     "category": "chain",
     "message": "log a panda express plate: orange chicken with chow mein",
-    "expect": { "calories": 1000, "protein_g": 38, "fat_g": 43, "carbs_g": 131 },
+    "expect": {
+      "calories": 1000,
+      "protein_g": 38,
+      "fat_g": 43,
+      "carbs_g": 131
+    },
     "tolerance_pct": 20,
     "source": "https://www.pandaexpress.com/nutrition (orange chicken 490 + chow mein 510)",
     "notes": "multi-item composite",
@@ -282,16 +439,27 @@
     "id": "starbucks-caramel-macchiato",
     "category": "chain",
     "message": "log a grande caramel macchiato from starbucks with 2% milk",
-    "expect": { "calories": 250, "protein_g": 10, "fat_g": 7, "carbs_g": 35 },
+    "expect": {
+      "calories": 250,
+      "protein_g": 10,
+      "fat_g": 7,
+      "carbs_g": 35
+    },
     "tolerance_pct": 15,
     "source": "https://www.starbucks.com/menu/product/413/hot (Grande, 2% milk)",
-    "verified_at": "2026-06-11"
+    "verified_at": "2026-06-11",
+    "smoke": true
   },
   {
     "id": "starbucks-bacon-gouda",
     "category": "chain",
     "message": "had a bacon gouda sandwich from starbucks for breakfast",
-    "expect": { "calories": 360, "protein_g": 17, "fat_g": 18, "carbs_g": 33 },
+    "expect": {
+      "calories": 360,
+      "protein_g": 17,
+      "fat_g": 18,
+      "carbs_g": 33
+    },
     "tolerance_pct": 15,
     "source": "https://www.starbucks.com/menu/product/431/single (Bacon, Gouda & Egg Sandwich)",
     "verified_at": "2026-06-11"
@@ -300,7 +468,12 @@
     "id": "dominos-pepperoni-2-slices",
     "category": "chain",
     "message": "I ate 2 slices of a medium hand tossed pepperoni pizza from dominos",
-    "expect": { "calories": 430, "protein_g": 18, "fat_g": 17, "carbs_g": 51 },
+    "expect": {
+      "calories": 430,
+      "protein_g": 18,
+      "fat_g": 17,
+      "carbs_g": 51
+    },
     "tolerance_pct": 20,
     "source": "https://www.dominos.com/en/pages/content/nutritional/cal-o-meter.jsp (medium hand-tossed pepperoni, 215 cal/slice)",
     "notes": "quantity-scaling case",
@@ -310,7 +483,12 @@
     "id": "shake-shack-shackburger",
     "category": "chain",
     "message": "log a single shackburger from shake shack",
-    "expect": { "calories": 500, "protein_g": 29, "fat_g": 30, "carbs_g": 26 },
+    "expect": {
+      "calories": 500,
+      "protein_g": 29,
+      "fat_g": 30,
+      "carbs_g": 26
+    },
     "tolerance_pct": 15,
     "source": "https://shakeshack.com/allergies-nutrition (ShackBurger single)",
     "verified_at": "2026-06-11"
@@ -319,7 +497,12 @@
     "id": "dunkin-glazed-donut",
     "category": "chain",
     "message": "snack: a glazed donut from dunkin",
-    "expect": { "calories": 240, "protein_g": 4, "fat_g": 11, "carbs_g": 33 },
+    "expect": {
+      "calories": 240,
+      "protein_g": 4,
+      "fat_g": 11,
+      "carbs_g": 33
+    },
     "tolerance_pct": 15,
     "source": "https://www.dunkindonuts.com/en/menu/donuts (Glazed Donut)",
     "verified_at": "2026-06-11"
@@ -328,7 +511,12 @@
     "id": "krispy-kreme-glazed-3",
     "category": "chain",
     "message": "I demolished 3 original glazed donuts from krispy kreme",
-    "expect": { "calories": 570, "protein_g": 9, "fat_g": 33, "carbs_g": 66 },
+    "expect": {
+      "calories": 570,
+      "protein_g": 9,
+      "fat_g": 33,
+      "carbs_g": 66
+    },
     "tolerance_pct": 15,
     "source": "https://www.krispykreme.com/menu/doughnuts (Original Glazed, 190 cal each)",
     "notes": "quantity-scaling case",
@@ -338,7 +526,12 @@
     "id": "panera-broccoli-cheddar-bowl",
     "category": "chain",
     "message": "log a bowl of broccoli cheddar soup from panera",
-    "expect": { "calories": 360, "protein_g": 14, "fat_g": 21, "carbs_g": 29 },
+    "expect": {
+      "calories": 360,
+      "protein_g": 14,
+      "fat_g": 21,
+      "carbs_g": 29
+    },
     "tolerance_pct": 15,
     "source": "https://www.panerabread.com/en-us/menu/products/broccoli-cheddar-soup.html (bowl)",
     "verified_at": "2026-06-11"
@@ -347,7 +540,12 @@
     "id": "olive-garden-breadsticks-2",
     "category": "chain",
     "message": "had 2 breadsticks at olive garden before dinner",
-    "expect": { "calories": 280, "protein_g": 10, "fat_g": 5, "carbs_g": 50 },
+    "expect": {
+      "calories": 280,
+      "protein_g": 10,
+      "fat_g": 5,
+      "carbs_g": 50
+    },
     "tolerance_pct": 15,
     "source": "https://www.olivegarden.com/nutrition (breadstick w/ garlic topping, 140 cal each)",
     "notes": "quantity-scaling case",
@@ -357,7 +555,12 @@
     "id": "sweetgreen-harvest-bowl",
     "category": "chain",
     "message": "log a harvest bowl from sweetgreen",
-    "expect": { "calories": 685, "protein_g": 34, "fat_g": 34, "carbs_g": 65 },
+    "expect": {
+      "calories": 685,
+      "protein_g": 34,
+      "fat_g": 34,
+      "carbs_g": 65
+    },
     "tolerance_pct": 20,
     "source": "https://www.sweetgreen.com/menu (Harvest Bowl, standard build)",
     "verified_at": "2026-06-11"
@@ -366,16 +569,27 @@
     "id": "quest-bar-ccd",
     "category": "packaged",
     "message": "log a quest bar, chocolate chip cookie dough",
-    "expect": { "calories": 200, "protein_g": 21, "fat_g": 9, "carbs_g": 21 },
+    "expect": {
+      "calories": 200,
+      "protein_g": 21,
+      "fat_g": 9,
+      "carbs_g": 21
+    },
     "tolerance_pct": 15,
     "source": "https://www.questnutrition.com/products/chocolate-chip-cookie-dough-protein-bar (label)",
-    "verified_at": "2026-06-11"
+    "verified_at": "2026-06-11",
+    "smoke": true
   },
   {
     "id": "rxbar-chocolate-sea-salt",
     "category": "packaged",
     "message": "snack: an rxbar chocolate sea salt",
-    "expect": { "calories": 210, "protein_g": 12, "fat_g": 9, "carbs_g": 23 },
+    "expect": {
+      "calories": 210,
+      "protein_g": 12,
+      "fat_g": 9,
+      "carbs_g": 23
+    },
     "tolerance_pct": 15,
     "source": "https://www.rxbar.com/shop/chocolate-sea-salt (label)",
     "verified_at": "2026-06-11"
@@ -384,7 +598,12 @@
     "id": "clif-bar-chocolate-chip",
     "category": "packaged",
     "message": "ate a clif bar chocolate chip on the trail",
-    "expect": { "calories": 250, "protein_g": 9, "fat_g": 5, "carbs_g": 45 },
+    "expect": {
+      "calories": 250,
+      "protein_g": 9,
+      "fat_g": 5,
+      "carbs_g": 45
+    },
     "tolerance_pct": 15,
     "source": "https://www.clifbar.com/products/clif-bar/chocolate-chip (label)",
     "verified_at": "2026-06-11"
@@ -393,16 +612,27 @@
     "id": "premier-protein-shake",
     "category": "packaged",
     "message": "log a premier protein shake, chocolate",
-    "expect": { "calories": 160, "protein_g": 30, "fat_g": 3, "carbs_g": 4 },
+    "expect": {
+      "calories": 160,
+      "protein_g": 30,
+      "fat_g": 3,
+      "carbs_g": 4
+    },
     "tolerance_pct": 15,
     "source": "https://www.premierprotein.com/products/chocolate-protein-shake (label)",
-    "verified_at": "2026-06-11"
+    "verified_at": "2026-06-11",
+    "smoke": true
   },
   {
     "id": "fairlife-core-power-26",
     "category": "packaged",
     "message": "had a core power 26g protein shake after my workout",
-    "expect": { "calories": 170, "protein_g": 26, "fat_g": 4.5, "carbs_g": 7 },
+    "expect": {
+      "calories": 170,
+      "protein_g": 26,
+      "fat_g": 4.5,
+      "carbs_g": 7
+    },
     "tolerance_pct": 15,
     "source": "https://fairlife.com/core-power/ (26g chocolate label)",
     "verified_at": "2026-06-11"
@@ -411,16 +641,27 @@
     "id": "chobani-nonfat-plain",
     "category": "packaged",
     "message": "log a 5.3 oz cup of chobani plain nonfat greek yogurt",
-    "expect": { "calories": 90, "protein_g": 16, "fat_g": 0, "carbs_g": 6 },
+    "expect": {
+      "calories": 90,
+      "protein_g": 16,
+      "fat_g": 0,
+      "carbs_g": 6
+    },
     "tolerance_pct": 15,
     "source": "https://www.chobani.com/products/ (plain nonfat 5.3oz label)",
-    "verified_at": "2026-06-11"
+    "verified_at": "2026-06-11",
+    "smoke": true
   },
   {
     "id": "fage-2pct-7oz",
     "category": "packaged",
     "message": "had a 7oz container of fage 2% greek yogurt",
-    "expect": { "calories": 160, "protein_g": 20, "fat_g": 4.5, "carbs_g": 8 },
+    "expect": {
+      "calories": 160,
+      "protein_g": 20,
+      "fat_g": 4.5,
+      "carbs_g": 8
+    },
     "tolerance_pct": 15,
     "source": "https://usa.fage/products/yogurt/plain/fage-total-2 (7oz label)",
     "verified_at": "2026-06-11"
@@ -429,17 +670,28 @@
     "id": "on-whey-2-scoops",
     "category": "packaged",
     "message": "log 2 scoops of optimum nutrition gold standard whey, double rich chocolate",
-    "expect": { "calories": 240, "protein_g": 48, "fat_g": 3, "carbs_g": 6 },
+    "expect": {
+      "calories": 240,
+      "protein_g": 48,
+      "fat_g": 3,
+      "carbs_g": 6
+    },
     "tolerance_pct": 15,
     "source": "https://www.optimumnutrition.com/en-us/Products/Shakes-%26-Powders/GOLD-STANDARD-100%25-WHEY (per scoop: 120 cal, 24P)",
     "notes": "quantity-scaling case",
-    "verified_at": "2026-06-11"
+    "verified_at": "2026-06-11",
+    "smoke": true
   },
   {
     "id": "oreo-3-cookies",
     "category": "packaged",
     "message": "snack: 3 oreos",
-    "expect": { "calories": 160, "protein_g": 1, "fat_g": 7, "carbs_g": 25 },
+    "expect": {
+      "calories": 160,
+      "protein_g": 1,
+      "fat_g": 7,
+      "carbs_g": 25
+    },
     "tolerance_pct": 15,
     "source": "https://www.oreo.com/ (label serving = 3 cookies)",
     "verified_at": "2026-06-11"
@@ -448,16 +700,27 @@
     "id": "snickers-bar",
     "category": "packaged",
     "message": "log a snickers bar",
-    "expect": { "calories": 250, "protein_g": 4, "fat_g": 12, "carbs_g": 32 },
+    "expect": {
+      "calories": 250,
+      "protein_g": 4,
+      "fat_g": 12,
+      "carbs_g": 32
+    },
     "tolerance_pct": 15,
     "source": "https://www.snickers.com/ (single bar label)",
-    "verified_at": "2026-06-11"
+    "verified_at": "2026-06-11",
+    "smoke": true
   },
   {
     "id": "kind-bar-dark-choc",
     "category": "packaged",
     "message": "had a kind bar, dark chocolate nuts and sea salt",
-    "expect": { "calories": 180, "protein_g": 6, "fat_g": 15, "carbs_g": 16 },
+    "expect": {
+      "calories": 180,
+      "protein_g": 6,
+      "fat_g": 15,
+      "carbs_g": 16
+    },
     "tolerance_pct": 15,
     "source": "https://www.kindsnacks.com/dark-chocolate-nuts-sea-salt (label)",
     "verified_at": "2026-06-11"
@@ -466,26 +729,43 @@
     "id": "poptart-frosted-strawberry-2",
     "category": "packaged",
     "message": "log a pack of frosted strawberry pop tarts (both pastries)",
-    "expect": { "calories": 400, "protein_g": 4, "fat_g": 9, "carbs_g": 76 },
+    "expect": {
+      "calories": 400,
+      "protein_g": 4,
+      "fat_g": 9,
+      "carbs_g": 76
+    },
     "tolerance_pct": 15,
     "source": "https://www.poptarts.com/en_US/products/frosted-strawberry.html (200 cal per pastry, 2 per pack)",
     "notes": "quantity-scaling case (one pack = 2 pastries)",
-    "verified_at": "2026-06-11"
+    "verified_at": "2026-06-11",
+    "smoke": true
   },
   {
     "id": "coke-12oz",
     "category": "packaged",
     "message": "log a can of coke",
-    "expect": { "calories": 140, "protein_g": 0, "fat_g": 0, "carbs_g": 39 },
+    "expect": {
+      "calories": 140,
+      "protein_g": 0,
+      "fat_g": 0,
+      "carbs_g": 39
+    },
     "tolerance_pct": 15,
     "source": "https://www.coca-cola.com/us/en/brands/coca-cola (12 fl oz can label)",
-    "verified_at": "2026-06-11"
+    "verified_at": "2026-06-11",
+    "smoke": true
   },
   {
     "id": "skippy-pb-2tbsp",
     "category": "packaged",
     "message": "had 2 tablespoons of skippy creamy peanut butter",
-    "expect": { "calories": 190, "protein_g": 7, "fat_g": 16, "carbs_g": 7 },
+    "expect": {
+      "calories": 190,
+      "protein_g": 7,
+      "fat_g": 16,
+      "carbs_g": 7
+    },
     "tolerance_pct": 15,
     "source": "https://www.peanutbutter.com/peanut-butter/creamy (label serving = 2 tbsp)",
     "verified_at": "2026-06-11"
@@ -494,7 +774,12 @@
     "id": "nature-valley-crunchy-pouch",
     "category": "packaged",
     "message": "log a pouch of nature valley crunchy granola bars, oats n honey",
-    "expect": { "calories": 190, "protein_g": 3, "fat_g": 7, "carbs_g": 29 },
+    "expect": {
+      "calories": 190,
+      "protein_g": 3,
+      "fat_g": 7,
+      "carbs_g": 29
+    },
     "tolerance_pct": 15,
     "source": "https://www.naturevalley.com/products/crunchy-oats-n-honey (label, 2-bar pouch)",
     "verified_at": "2026-06-11"
@@ -503,17 +788,28 @@
     "id": "lenny-larrys-cookie",
     "category": "packaged",
     "message": "ate a whole lenny and larry's complete cookie, chocolate chip",
-    "expect": { "calories": 400, "protein_g": 16, "fat_g": 12, "carbs_g": 56 },
+    "expect": {
+      "calories": 400,
+      "protein_g": 16,
+      "fat_g": 12,
+      "carbs_g": 56
+    },
     "tolerance_pct": 15,
     "source": "https://www.lennylarry.com/products/chocolate-chip-complete-cookie (whole cookie = 2 label servings)",
     "notes": "label serving is half a cookie — tests serving-vs-package handling",
-    "verified_at": "2026-06-11"
+    "verified_at": "2026-06-11",
+    "smoke": true
   },
   {
     "id": "halo-top-vanilla-pint",
     "category": "packaged",
     "message": "log an entire pint of halo top vanilla bean",
-    "expect": { "calories": 280, "protein_g": 20, "fat_g": 8, "carbs_g": 60 },
+    "expect": {
+      "calories": 280,
+      "protein_g": 20,
+      "fat_g": 8,
+      "carbs_g": 60
+    },
     "tolerance_pct": 20,
     "source": "https://halotop.com/dairy-ice-cream/vanilla-bean (per-pint label)",
     "notes": "whole-package case",
@@ -523,7 +819,12 @@
     "id": "celsius-can",
     "category": "packaged",
     "message": "log a celsius energy drink",
-    "expect": { "calories": 10, "protein_g": 0, "fat_g": 0, "carbs_g": 2 },
+    "expect": {
+      "calories": 10,
+      "protein_g": 0,
+      "fat_g": 0,
+      "carbs_g": 2
+    },
     "tolerance_pct": 50,
     "source": "https://www.celsius.com/products/ (12oz can label)",
     "notes": "near-zero-calorie case; wide tolerance because APE on tiny denominators is noisy",
@@ -533,43 +834,72 @@
     "id": "eggs-2-scrambled-toast",
     "category": "generic",
     "message": "breakfast was 2 scrambled eggs and a slice of buttered toast",
-    "expect": { "calories": 300, "protein_g": 16, "fat_g": 20, "carbs_g": 15 },
+    "expect": {
+      "calories": 300,
+      "protein_g": 16,
+      "fat_g": 20,
+      "carbs_g": 15
+    },
     "tolerance_pct": 20,
     "source": "USDA FNDDS: scrambled egg ~96 cal each; white toast w/ butter ~110",
-    "verified_at": "2026-06-11"
+    "verified_at": "2026-06-11",
+    "smoke": true
   },
   {
     "id": "white-rice-1-cup",
     "category": "generic",
     "message": "log 1 cup of cooked white rice",
-    "expect": { "calories": 205, "protein_g": 4.3, "fat_g": 0.4, "carbs_g": 45 },
+    "expect": {
+      "calories": 205,
+      "protein_g": 4.3,
+      "fat_g": 0.4,
+      "carbs_g": 45
+    },
     "tolerance_pct": 15,
     "source": "USDA SR Legacy 20045 (rice, white, long-grain, cooked, 1 cup = 158g)",
-    "verified_at": "2026-06-11"
+    "verified_at": "2026-06-11",
+    "smoke": true
   },
   {
     "id": "chicken-breast-8oz",
     "category": "generic",
     "message": "log 8 oz of grilled chicken breast",
-    "expect": { "calories": 375, "protein_g": 70, "fat_g": 8, "carbs_g": 0 },
+    "expect": {
+      "calories": 375,
+      "protein_g": 70,
+      "fat_g": 8,
+      "carbs_g": 0
+    },
     "tolerance_pct": 15,
     "source": "USDA SR Legacy 05064 (chicken breast, cooked, 165 cal/100g; 8oz = 227g)",
-    "verified_at": "2026-06-11"
+    "verified_at": "2026-06-11",
+    "smoke": true
   },
   {
     "id": "banana-medium",
     "category": "generic",
     "message": "had a banana",
-    "expect": { "calories": 105, "protein_g": 1.3, "fat_g": 0.4, "carbs_g": 27 },
+    "expect": {
+      "calories": 105,
+      "protein_g": 1.3,
+      "fat_g": 0.4,
+      "carbs_g": 27
+    },
     "tolerance_pct": 20,
     "source": "USDA SR Legacy 09040 (banana, medium, 118g)",
-    "verified_at": "2026-06-11"
+    "verified_at": "2026-06-11",
+    "smoke": true
   },
   {
     "id": "apple-large",
     "category": "generic",
     "message": "snack: one large apple",
-    "expect": { "calories": 116, "protein_g": 0.6, "fat_g": 0.4, "carbs_g": 31 },
+    "expect": {
+      "calories": 116,
+      "protein_g": 0.6,
+      "fat_g": 0.4,
+      "carbs_g": 31
+    },
     "tolerance_pct": 20,
     "source": "USDA SR Legacy 09003 (apple, large, 223g)",
     "verified_at": "2026-06-11"
@@ -578,16 +908,27 @@
     "id": "pbj-sandwich",
     "category": "generic",
     "message": "log a PB&J: 2 slices white bread, 2 tbsp peanut butter, 1 tbsp grape jelly",
-    "expect": { "calories": 390, "protein_g": 11, "fat_g": 18, "carbs_g": 49 },
+    "expect": {
+      "calories": 390,
+      "protein_g": 11,
+      "fat_g": 18,
+      "carbs_g": 49
+    },
     "tolerance_pct": 20,
     "source": "USDA: white bread 75/slice + PB 190/2tbsp + jelly 50/tbsp",
-    "verified_at": "2026-06-11"
+    "verified_at": "2026-06-11",
+    "smoke": true
   },
   {
     "id": "oatmeal-1-cup-water",
     "category": "generic",
     "message": "log a cup of oatmeal cooked in water",
-    "expect": { "calories": 166, "protein_g": 5.9, "fat_g": 3.6, "carbs_g": 28 },
+    "expect": {
+      "calories": 166,
+      "protein_g": 5.9,
+      "fat_g": 3.6,
+      "carbs_g": 28
+    },
     "tolerance_pct": 20,
     "source": "USDA SR Legacy 08121 (oatmeal, cooked with water, 1 cup = 234g)",
     "verified_at": "2026-06-11"
@@ -596,7 +937,12 @@
     "id": "ribeye-6oz",
     "category": "generic",
     "message": "dinner: a 6 oz ribeye",
-    "expect": { "calories": 480, "protein_g": 41, "fat_g": 34, "carbs_g": 0 },
+    "expect": {
+      "calories": 480,
+      "protein_g": 41,
+      "fat_g": 34,
+      "carbs_g": 0
+    },
     "tolerance_pct": 20,
     "source": "USDA SR Legacy (beef ribeye, grilled, ~283 cal/100g; 6oz = 170g)",
     "verified_at": "2026-06-11"
@@ -605,7 +951,12 @@
     "id": "bacon-eggs",
     "category": "generic",
     "message": "log 2 fried eggs and 2 strips of bacon",
-    "expect": { "calories": 270, "protein_g": 18, "fat_g": 21, "carbs_g": 1 },
+    "expect": {
+      "calories": 270,
+      "protein_g": 18,
+      "fat_g": 21,
+      "carbs_g": 1
+    },
     "tolerance_pct": 20,
     "source": "USDA: fried egg ~90 each + cooked bacon slice ~45 each",
     "verified_at": "2026-06-11"
@@ -614,7 +965,12 @@
     "id": "milk-2pct-cup",
     "category": "generic",
     "message": "log a glass of 2% milk, 1 cup",
-    "expect": { "calories": 122, "protein_g": 8, "fat_g": 4.8, "carbs_g": 12 },
+    "expect": {
+      "calories": 122,
+      "protein_g": 8,
+      "fat_g": 4.8,
+      "carbs_g": 12
+    },
     "tolerance_pct": 15,
     "source": "USDA SR Legacy 01079 (milk, 2%, 1 cup = 244g)",
     "verified_at": "2026-06-11"
@@ -623,7 +979,12 @@
     "id": "avocado-toast",
     "category": "generic",
     "message": "breakfast: avocado toast, one slice of whole wheat with half an avocado",
-    "expect": { "calories": 200, "protein_g": 5, "fat_g": 12, "carbs_g": 19 },
+    "expect": {
+      "calories": 200,
+      "protein_g": 5,
+      "fat_g": 12,
+      "carbs_g": 19
+    },
     "tolerance_pct": 25,
     "source": "USDA: whole wheat slice ~80 + half avocado ~120",
     "verified_at": "2026-06-11"
@@ -632,7 +993,12 @@
     "id": "cottage-cheese-1-cup",
     "category": "generic",
     "message": "log a cup of 2% cottage cheese",
-    "expect": { "calories": 180, "protein_g": 24, "fat_g": 5, "carbs_g": 8 },
+    "expect": {
+      "calories": 180,
+      "protein_g": 24,
+      "fat_g": 5,
+      "carbs_g": 8
+    },
     "tolerance_pct": 15,
     "source": "USDA SR Legacy 01016 (cottage cheese, 2%, 1 cup = 226g)",
     "verified_at": "2026-06-11"
@@ -641,7 +1007,12 @@
     "id": "turkey-sandwich",
     "category": "generic",
     "message": "lunch was a turkey sandwich: 3 oz deli turkey, 2 slices wheat bread, lettuce, tomato, 1 tbsp mayo",
-    "expect": { "calories": 330, "protein_g": 22, "fat_g": 13, "carbs_g": 32 },
+    "expect": {
+      "calories": 330,
+      "protein_g": 22,
+      "fat_g": 13,
+      "carbs_g": 32
+    },
     "tolerance_pct": 20,
     "source": "USDA: deli turkey 90/3oz + wheat bread 140/2 + mayo 90/tbsp + veg ~10",
     "verified_at": "2026-06-11"
@@ -650,16 +1021,27 @@
     "id": "spaghetti-marinara",
     "category": "generic",
     "message": "log 1 cup of cooked spaghetti with half a cup of marinara",
-    "expect": { "calories": 280, "protein_g": 10, "fat_g": 3.5, "carbs_g": 53 },
+    "expect": {
+      "calories": 280,
+      "protein_g": 10,
+      "fat_g": 3.5,
+      "carbs_g": 53
+    },
     "tolerance_pct": 20,
     "source": "USDA: spaghetti 1 cup cooked 220 + marinara 1/2 cup 60",
-    "verified_at": "2026-06-11"
+    "verified_at": "2026-06-11",
+    "smoke": true
   },
   {
     "id": "whey-scoop-water",
     "category": "generic",
     "message": "log a protein shake, one scoop of whey in water",
-    "expect": { "calories": 120, "protein_g": 24, "fat_g": 1.5, "carbs_g": 3 },
+    "expect": {
+      "calories": 120,
+      "protein_g": 24,
+      "fat_g": 1.5,
+      "carbs_g": 3
+    },
     "tolerance_pct": 20,
     "source": "typical whey isolate/concentrate scoop label (120 cal, 24P)",
     "verified_at": "2026-06-11"
@@ -668,16 +1050,27 @@
     "id": "salmon-100g",
     "category": "generic",
     "message": "log 100 grams of cooked atlantic salmon",
-    "expect": { "calories": 206, "protein_g": 22, "fat_g": 12, "carbs_g": 0 },
+    "expect": {
+      "calories": 206,
+      "protein_g": 22,
+      "fat_g": 12,
+      "carbs_g": 0
+    },
     "tolerance_pct": 15,
     "source": "USDA SR Legacy 15237 (salmon, Atlantic, farmed, cooked, 100g)",
-    "verified_at": "2026-06-11"
+    "verified_at": "2026-06-11",
+    "smoke": true
   },
   {
     "id": "black-beans-1-cup",
     "category": "generic",
     "message": "log a cup of cooked black beans",
-    "expect": { "calories": 227, "protein_g": 15, "fat_g": 0.9, "carbs_g": 41 },
+    "expect": {
+      "calories": 227,
+      "protein_g": 15,
+      "fat_g": 0.9,
+      "carbs_g": 41
+    },
     "tolerance_pct": 15,
     "source": "USDA SR Legacy 16015 (black beans, cooked, 1 cup = 172g)",
     "verified_at": "2026-06-11"
@@ -686,7 +1079,12 @@
     "id": "almonds-1oz",
     "category": "generic",
     "message": "snack: an ounce of almonds",
-    "expect": { "calories": 164, "protein_g": 6, "fat_g": 14, "carbs_g": 6 },
+    "expect": {
+      "calories": 164,
+      "protein_g": 6,
+      "fat_g": 14,
+      "carbs_g": 6
+    },
     "tolerance_pct": 15,
     "source": "USDA SR Legacy 12061 (almonds, 1 oz = 28g)",
     "verified_at": "2026-06-11"
@@ -695,7 +1093,12 @@
     "id": "baked-potato-medium",
     "category": "generic",
     "message": "log a medium baked potato with the skin, plain",
-    "expect": { "calories": 161, "protein_g": 4.3, "fat_g": 0.2, "carbs_g": 37 },
+    "expect": {
+      "calories": 161,
+      "protein_g": 4.3,
+      "fat_g": 0.2,
+      "carbs_g": 37
+    },
     "tolerance_pct": 20,
     "source": "USDA SR Legacy 11357 (baked potato w/ skin, medium = 173g)",
     "verified_at": "2026-06-11"
@@ -704,16 +1107,27 @@
     "id": "greek-yogurt-honey",
     "category": "generic",
     "message": "log a cup of plain nonfat greek yogurt with a tablespoon of honey",
-    "expect": { "calories": 200, "protein_g": 23, "fat_g": 0.7, "carbs_g": 26 },
+    "expect": {
+      "calories": 200,
+      "protein_g": 23,
+      "fat_g": 0.7,
+      "carbs_g": 26
+    },
     "tolerance_pct": 20,
     "source": "USDA: nonfat greek yogurt 1 cup ~133 + honey 1 tbsp ~64",
-    "verified_at": "2026-06-11"
+    "verified_at": "2026-06-11",
+    "smoke": true
   },
   {
     "id": "tuna-can-drained",
     "category": "generic",
     "message": "log a can of tuna in water, drained",
-    "expect": { "calories": 120, "protein_g": 27, "fat_g": 1, "carbs_g": 0 },
+    "expect": {
+      "calories": 120,
+      "protein_g": 27,
+      "fat_g": 1,
+      "carbs_g": 0
+    },
     "tolerance_pct": 20,
     "source": "USDA / typical 5oz can drained (~4oz fish)",
     "verified_at": "2026-06-11"

@@ -35,6 +35,11 @@ class Case:
     source: str
     notes: str = ""
     verified_at: str = ""
+    # Curated PR-smoke subset member. Smoke runs (the default in CI)
+    # execute only these — every eval trial spends real tokens, so the
+    # cheap representative slice is the default and the full dataset is
+    # opt-in.
+    smoke: bool = False
 
 
 @dataclass
@@ -189,6 +194,7 @@ def _validate_case(item: Any, index: int) -> Case:
         source=str(item["source"]),
         notes=str(item.get("notes", "")),
         verified_at=str(item.get("verified_at", "")),
+        smoke=bool(item.get("smoke", False)),
     )
 
 

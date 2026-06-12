@@ -28,6 +28,41 @@ CATEGORY_THRESHOLD_PP = 5.0
 _CATEGORY_ORDER = ("chain", "packaged", "generic")
 
 
+def restrict_baseline(
+    baseline: dict[str, Any], case_ids: set[str]
+) -> dict[str, Any] | None:
+    """Recompute a baseline's aggregates over only `case_ids`, so a
+    smoke-subset run compares apples to apples against a full-dataset
+    baseline. Returns None when the overlap is empty (e.g. the dataset
+    was renamed wholesale — comparison would be meaningless)."""
+    rows = [c for c in baseline.get("cases", []) if c["id"] in case_ids]
+    if not rows:
+        return None
+    if len(rows) == len(baseline.get("cases", [])):
+        return baseline
+
+    by_category: dict[str, dict[str, Any]] = {}
+    for category in _CATEGORY_ORDER:
+        bucket = [c for c in rows if c["category"] == category]
+        if not bucket:
+            continue
+        pass_rate = sum(1 for c in bucket if c["passed"]) / len(bucket) * 100.0
+        by_category[category] = {
+            "cases": len(bucket),
+            "pass_rate_pct": round(pass_rate, 1),
+        }
+    composite = sum(c["pass_rate_pct"] for c in by_category.values()) / len(by_category)
+    restricted = dict(baseline)
+    restricted["aggregates"] = {
+        "composite": round(composite, 1),
+        "total_cases": len(rows),
+        "categories": by_category,
+        "overall": {},
+    }
+    restricted["restricted_to"] = len(rows)
+    return restricted
+
+
 def verdict(current: dict[str, Any], baseline: dict[str, Any] | None) -> str:
     if baseline is None:
         return "no_baseline"
@@ -50,9 +85,19 @@ _VERDICT_LINES = {
 def render_markdown(
     *, current: dict[str, Any], baseline: dict[str, Any] | None
 ) -> str:
+    if baseline is not None:
+        baseline = restrict_baseline(
+            baseline, {c["id"] for c in current.get("cases", [])}
+        )
     agg = current["aggregates"]
     meta = current.get("meta", {})
     lines = [MARKER, "## 🧪 Macro estimation eval", ""]
+    if baseline is not None and baseline.get("restricted_to"):
+        lines.append(
+            f"_Subset run: baseline restricted to the {baseline['restricted_to']} "
+            f"cases this run executed._"
+        )
+        lines.append("")
 
     v = verdict(current, baseline)
     if baseline is None:

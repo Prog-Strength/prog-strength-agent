@@ -60,6 +60,8 @@ DEFAULT_ROUTER = "claude-haiku-4-5-20251001"
 
 async def run(args: argparse.Namespace) -> int:
     cases = load_dataset(args.dataset)
+    if args.smoke:
+        cases = [c for c in cases if c.smoke]
     if args.category:
         cases = [c for c in cases if c.category in args.category]
     if args.limit:
@@ -67,6 +69,13 @@ async def run(args: argparse.Namespace) -> int:
     if not cases:
         print("no cases selected", file=sys.stderr)
         return 2
+    log.info(
+        "running %d cases × %d trial(s) = %d LLM trials%s",
+        len(cases),
+        args.trials,
+        len(cases) * args.trials,
+        " (smoke subset)" if args.smoke else "",
+    )
 
     with tempfile.TemporaryDirectory(prefix="macro-eval-") as tmp:
         workdir = Path(tmp)
@@ -269,8 +278,18 @@ def main() -> None:
         required=True,
         help="path to a prog-strength-mcp checkout (uv project)",
     )
-    parser.add_argument("--trials", type=int, default=3)
-    parser.add_argument("--concurrency", type=int, default=4)
+    # Cost-conscious defaults: 1 trial and low concurrency. Every trial
+    # spends real tokens; bump --trials for noise-damped baselines, not
+    # for the everyday loop. Concurrency 2 stays under low-tier
+    # Anthropic rate limits (the SDK retries 429s, but not hammering
+    # the limit at all is faster and cheaper).
+    parser.add_argument("--trials", type=int, default=1)
+    parser.add_argument("--concurrency", type=int, default=2)
+    parser.add_argument(
+        "--smoke",
+        action="store_true",
+        help="run only the curated ~24-case smoke subset (the cheap default for CI/PRs)",
+    )
     parser.add_argument("--out", default="eval-results.json")
     parser.add_argument("--summary-out", default="eval-summary.md")
     parser.add_argument(

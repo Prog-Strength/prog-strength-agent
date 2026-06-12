@@ -129,6 +129,20 @@ def test_checked_in_dataset_is_valid_and_covers_all_categories():
     assert any("10 chicken minis" in c.message for c in cases)
 
 
+def test_smoke_subset_is_small_and_stratified():
+    """The smoke subset is the cost-conscious default for CI runs:
+    small enough to be cheap (every trial spends tokens), and covering
+    every category so a smoke verdict means something."""
+    cases = load_dataset(DATASET_PATH)
+    smoke = [c for c in cases if c.smoke]
+    assert 18 <= len(smoke) <= 30
+    per_category = {cat: sum(1 for c in smoke if c.category == cat) for cat in
+                    ("chain", "packaged", "generic")}
+    assert all(n >= 5 for n in per_category.values()), per_category
+    # The headline failure mode stays in the cheap loop.
+    assert any("10 chicken minis" in c.message for c in smoke)
+
+
 def test_dataset_rejects_bad_category(tmp_path):
     bad = tmp_path / "bad.json"
     bad.write_text(
@@ -191,6 +205,29 @@ def test_render_markdown_has_marker_verdict_and_failing_cases():
     # The generic case failed (50% APE) and must appear in the details.
     assert "failing cases" in out
     assert "| c | generic |" in out
+
+
+def test_restrict_baseline_recomputes_over_subset():
+    """A smoke run must compare against the SAME cases in the full
+    baseline, not the whole-dataset composite."""
+    baseline = _doc()  # cases a (chain, pass), b (packaged, pass), c (generic, fail)
+    restricted = compare.restrict_baseline(baseline, {"a", "c"})
+    assert restricted["restricted_to"] == 2
+    agg = restricted["aggregates"]
+    assert set(agg["categories"]) == {"chain", "generic"}
+    # chain 100%, generic 0% → composite 50.
+    assert agg["composite"] == 50.0
+    # Full overlap returns the baseline untouched.
+    assert compare.restrict_baseline(baseline, {"a", "b", "c"}) is baseline
+    # Zero overlap → no comparison.
+    assert compare.restrict_baseline(baseline, {"zzz"}) is None
+
+
+def test_render_markdown_notes_subset_restriction():
+    current = _doc()
+    current["cases"] = [c for c in current["cases"] if c["id"] in ("a", "c")]
+    out = compare.render_markdown(current=current, baseline=_doc())
+    assert "baseline restricted to the 2 cases" in out
 
 
 def test_render_markdown_without_baseline():
