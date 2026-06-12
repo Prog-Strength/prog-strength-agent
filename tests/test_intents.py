@@ -56,6 +56,7 @@ async def test_log_nutrition_prefetch_fans_out_pantry_and_recipes():
     rules, data, _failed = await IntentRegistry.run("log_nutrition", session)
 
     assert "Assume one serving" in rules
+    assert "lookup_food_nutrition" in rules
     assert "Whey" in data
     assert "Standard Breakfast" in data
     assert "PANTRY" in data

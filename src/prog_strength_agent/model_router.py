@@ -52,7 +52,11 @@ the classify_request tool.
 
 tier:
 - simple — CRUD or lookup (logging a workout, listing exercises).
-- complex — multi-step analysis, planning, trend reasoning.
+- complex — multi-step analysis, planning, trend reasoning. ALSO pick
+  complex when the user is logging food from a restaurant or other
+  external source (a chain name, "from <place>", ordered/bought/
+  picked-up wording): when no database match exists those macros are
+  estimated from model knowledge, which needs the stronger model.
 
 intent:
 - log_nutrition — the user wants to record food/drink they consumed.

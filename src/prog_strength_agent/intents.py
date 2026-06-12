@@ -13,9 +13,10 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
-from typing import Any, Awaitable, Callable, Iterable
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
 log = logging.getLogger(__name__)
 
@@ -128,7 +129,9 @@ _LOG_NUTRITION_RULES = """\
 The user is logging a meal or snack. Assume one serving unless the \
 user specifies otherwise. The user's saved pantry items and recipes \
 are listed below — search them by name first before asking the user \
-for macros or creating a new pantry item. Only ask follow-up \
+for macros or creating a new pantry item. For a one-off external meal \
+that matches nothing in the pantry, call lookup_food_nutrition to get \
+real macro data before estimating macros yourself. Only ask follow-up \
 questions about details you genuinely cannot infer.\
 """
 
@@ -194,7 +197,7 @@ _register(IntentSpec(
 
 
 async def _log_bodyweight_prefetch(session: Any) -> dict[str, Any]:
-    since = (datetime.now(timezone.utc) - timedelta(days=14)).isoformat().replace("+00:00", "Z")
+    since = (datetime.now(UTC) - timedelta(days=14)).isoformat().replace("+00:00", "Z")
     res = await session.call_tool("list_bodyweight", {"since": since})
     return {"entries": _decode_tool_result(res)}
 
@@ -229,7 +232,7 @@ _register(IntentSpec(
 
 
 async def _analyze_progress_prefetch(session: Any) -> dict[str, Any]:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     since = (now - timedelta(days=30)).isoformat().replace("+00:00", "Z")
     until = now.isoformat().replace("+00:00", "Z")
     workouts_task = session.call_tool("list_workouts", {})

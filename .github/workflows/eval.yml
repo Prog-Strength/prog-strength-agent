@@ -1,0 +1,168 @@
+# Macro-accuracy eval — STRICTLY OPT-IN. Every run spends real
+# Anthropic tokens, so nothing here triggers automatically:
+#
+#   * PR: add the `eval:run` label to get a smoke run (24 curated
+#     cases × 1 trial, ~5 min) with a sticky comparison comment.
+#   * Manual: `gh workflow run "Macro Eval"` — check `full` for the
+#     whole dataset, `publish_baseline` (from main) to record the
+#     comparison baseline + a history.jsonl line.
+#
+# The everyday loop is local and cheaper still:
+#   uv run python -m evals.run_eval --smoke \
+#       --api-path ../prog-strength-api --mcp-path ../prog-strength-mcp
+#
+# See prog-strength-docs/sows/custom-meal-macro-accuracy.md.
+name: Macro Eval
+
+on:
+  workflow_dispatch:
+    inputs:
+      full:
+        description: "Run the full dataset (default: 24-case smoke subset)"
+        type: boolean
+        default: false
+      trials:
+        description: "Trials per case (3 recommended for baselines)"
+        type: number
+        default: 1
+      publish_baseline:
+        description: "Publish results as the eval-baseline artifact + append history (run from main)"
+        type: boolean
+        default: false
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
+
+permissions:
+  contents: write       # history.jsonl commit on baseline runs
+  pull-requests: write  # sticky eval comment
+  actions: read         # baseline artifact download
+
+concurrency:
+  group: macro-eval-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  eval:
+    # PR runs require the eval:run label — tokens are never spent on a
+    # push unless someone asked for it.
+    if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'eval:run') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Check out agent
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          path: agent
+
+      # The eval runs the real stack; mcp + api come along at main.
+      # (Per-ref cross-repo evals were cut for cost/simplicity — see the
+      # SOW. Re-add refs here if that ever becomes worth its spend.)
+      - name: Check out mcp
+        uses: actions/checkout@v4
+        with:
+          repository: Prog-Strength/prog-strength-mcp
+          ref: main
+          path: mcp
+
+      - name: Check out api
+        uses: actions/checkout@v4
+        with:
+          repository: Prog-Strength/prog-strength-api
+          ref: main
+          path: api
+
+      - uses: astral-sh/setup-uv@v5
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: api/go.mod
+          cache-dependency-path: api/go.sum
+
+      - name: Sync dependencies
+        run: |
+          uv sync --project agent
+          uv sync --project mcp
+
+      - name: Run eval
+        working-directory: agent
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          FATSECRET_CLIENT_ID: ${{ secrets.FATSECRET_CLIENT_ID }}
+          FATSECRET_CLIENT_SECRET: ${{ secrets.FATSECRET_CLIENT_SECRET }}
+          USDA_FDC_API_KEY: ${{ secrets.USDA_FDC_API_KEY }}
+        run: |
+          uv run python -m evals.run_eval \
+            --dataset evals/dataset/custom_meals.json \
+            --api-path ../api \
+            --mcp-path ../mcp \
+            ${{ inputs.full && ' ' || '--smoke' }} \
+            --trials ${{ inputs.trials || 1 }} \
+            --concurrency 2 \
+            --out eval-results.json \
+            --summary-out eval-summary.md
+
+      # Compare against the most recent published baseline if one
+      # exists. No baseline → the comment says so; nothing re-runs.
+      - name: Download baseline
+        id: baseline
+        run: |
+          set -e
+          ARTIFACT_ID=$(gh api "repos/${{ github.repository }}/actions/artifacts?name=eval-baseline&per_page=20" \
+            --jq '[.artifacts[] | select(.expired | not)] | sort_by(.created_at) | last | .id // empty' || true)
+          if [ -n "${ARTIFACT_ID}" ]; then
+            gh api "repos/${{ github.repository }}/actions/artifacts/${ARTIFACT_ID}/zip" > baseline.zip
+            mkdir -p baseline && unzip -o baseline.zip -d baseline
+            mv baseline/eval-results.json baseline/eval-baseline.json 2>/dev/null || true
+          fi
+
+      - name: Render comparison
+        working-directory: agent
+        run: |
+          uv run python -m evals.compare \
+            --current eval-results.json \
+            --baseline ../baseline/eval-baseline.json \
+            --out eval-summary.md
+
+      - name: Upsert PR comment
+        if: ${{ github.event_name == 'pull_request' }}
+        run: |
+          set -e
+          PR=${{ github.event.pull_request.number }}
+          EXISTING=$(gh api "repos/${{ github.repository }}/issues/${PR}/comments" --paginate \
+            --jq '[.[] | select(.body | startswith("<!-- macro-eval -->"))][0].id // empty')
+          if [ -n "${EXISTING}" ]; then
+            gh api -X PATCH "repos/${{ github.repository }}/issues/comments/${EXISTING}" \
+              -F body=@agent/eval-summary.md
+          else
+            gh api "repos/${{ github.repository }}/issues/${PR}/comments" \
+              -F body=@agent/eval-summary.md
+          fi
+
+      - name: Upload results artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-results-${{ github.run_id }}
+          path: agent/eval-results.json
+
+      - name: Publish baseline artifact
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish_baseline }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-baseline
+          path: agent/eval-results.json
+
+      - name: Append history.jsonl
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish_baseline }}
+        continue-on-error: true
+        working-directory: agent
+        run: |
+          uv run python -m evals.compare \
+            --current eval-results.json --history-line >> evals/history.jsonl
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add evals/history.jsonl
+          git commit -m "chore(eval): record results for ${GITHUB_SHA::7} [skip ci]"
+          git push origin HEAD:main
