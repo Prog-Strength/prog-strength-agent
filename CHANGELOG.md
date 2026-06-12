@@ -1,3 +1,10 @@
+# [0.21.0](https://github.com/Prog-Strength/prog-strength-agent/compare/v0.20.0...v0.21.0) (2026-06-12)
+
+
+### Features
+
+* **agent:** prompt caching for tools and system prompt ([#10](https://github.com/Prog-Strength/prog-strength-agent/issues/10)) ([897e8cc](https://github.com/Prog-Strength/prog-strength-agent/commit/897e8cc87913373df19c494d946f6754c824fe34))
+
 # [0.20.0](https://github.com/Prog-Strength/prog-strength-agent/compare/v0.19.0...v0.20.0) (2026-06-12)
 
 
