@@ -127,6 +127,23 @@ def test_system_prompt_covers_custom_meal_logging():
     assert '"meal"' in SYSTEM_PROMPT
 
 
+def test_system_prompt_directs_lookup_before_estimating():
+    """Custom-meal macros must come from lookup_food_nutrition when
+    possible: lookup-first ordering, copy total_for_quantity verbatim,
+    prefer warning-free candidates, cite the source in the reply, and
+    only estimate (saying so) on a lookup miss. See
+    prog-strength-docs/sows/custom-meal-macro-accuracy.md."""
+    assert "lookup_food_nutrition" in SYSTEM_PROMPT
+    assert "BEFORE estimating" in SYSTEM_PROMPT
+    assert "total_for_quantity" in SYSTEM_PROMPT
+    assert "never re-multiply" in SYSTEM_PROMPT
+    assert "plausibility_warning" in SYSTEM_PROMPT
+    # Cite-your-source instruction with the worked example.
+    assert "cite the source" in SYSTEM_PROMPT
+    # Estimation is the explicit fallback, flagged as such to the user.
+    assert "your estimate" in SYSTEM_PROMPT
+
+
 def test_custom_meal_logging_survives_date_prefix():
     """The custom-meals guidance is still present after the per-request
     date prefix is prepended (it lives in the base, not the prefix)."""
@@ -135,6 +152,7 @@ def test_custom_meal_logging_survives_date_prefix():
     )
     assert "list_pantry_items" in out
     assert "log_custom_meal" in out
+    assert "lookup_food_nutrition" in out
     assert "create_pantry_item" in out
     assert "to your pantry so I can find it next time" in out
     assert "serving_unit" in out

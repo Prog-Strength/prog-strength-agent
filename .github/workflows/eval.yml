@@ -1,0 +1,48 @@
+# Macro-accuracy eval on PRs (sticky comparison comment) and on main
+# pushes (publishes the eval-baseline artifact + history line). The
+# heavy lifting lives in eval-reusable.yml, which prog-strength-mcp's
+# eval.yml also calls.
+name: Macro Eval
+
+on:
+  pull_request:
+    paths:
+      - "src/**"
+      - "evals/**"
+      - "pyproject.toml"
+      - "uv.lock"
+      - "!evals/history.jsonl"
+  push:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "evals/**"
+      - "pyproject.toml"
+      - "uv.lock"
+      - "!evals/history.jsonl"
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: read
+
+# Rapid pushes to a PR cancel the in-flight (paid) run; main-branch
+# baseline runs complete so the baseline artifact is never half-built.
+concurrency:
+  group: macro-eval-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  eval:
+    # `eval:skip` label is the escape hatch for changes the author
+    # knows can't affect estimation behavior.
+    if: ${{ github.event_name != 'pull_request' || !contains(github.event.pull_request.labels.*.name, 'eval:skip') }}
+    uses: ./.github/workflows/eval-reusable.yml
+    with:
+      agent_ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      publish_baseline: ${{ github.event_name == 'push' }}
+    secrets:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      FATSECRET_CLIENT_ID: ${{ secrets.FATSECRET_CLIENT_ID }}
+      FATSECRET_CLIENT_SECRET: ${{ secrets.FATSECRET_CLIENT_SECRET }}
+      USDA_FDC_API_KEY: ${{ secrets.USDA_FDC_API_KEY }}

@@ -101,3 +101,14 @@ async def test_route_populates_intent_on_telemetry():
     await router.route(messages=[{"role": "user", "content": "how is my bench progressing?"}], telemetry=t)
     assert t.routed_tier == "complex"
     assert t.intent == "analyze_progress"
+
+
+def test_router_prompt_routes_external_meal_estimation_to_complex():
+    """Phase 3 of the macro-accuracy SOW: external-meal logging turns
+    classify as complex so no-data estimation runs on the stronger
+    model. Pin the prompt rule, not the classifier behavior (that's
+    the eval harness's job)."""
+    from prog_strength_agent.model_router import ROUTER_SYSTEM_PROMPT
+
+    assert "restaurant" in ROUTER_SYSTEM_PROMPT
+    assert "external source" in ROUTER_SYSTEM_PROMPT
