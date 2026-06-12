@@ -20,7 +20,7 @@ import json
 import logging
 from collections.abc import AsyncGenerator
 from contextlib import AsyncExitStack
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from anthropic import AsyncAnthropic
@@ -193,8 +193,9 @@ class ModelHarness:
                     # composed_system_prompt is assembled above from
                     # the base prompt + intent-specific rules and
                     # prefetched data. Falls back to base on prefetch
-                    # failure so the turn always completes.
-                    system=composed_system_prompt,
+                    # failure so the turn always completes. Wrapped in
+                    # a cache_control block — see _system_blocks.
+                    system=_system_blocks(composed_system_prompt),
                     tools=tools_for_claude,
                     messages=messages,
                 ) as stream:
@@ -246,7 +247,7 @@ class ModelHarness:
                 for block in final.content:
                     if block.type != "tool_use":
                         continue
-                    tool_started = datetime.now(timezone.utc)
+                    tool_started = datetime.now(UTC)
                     tool_start_ms = now_ms()
                     tool_error: str | None = None
                     # Auto-inject the user's timezone into nutrition tool
@@ -279,7 +280,7 @@ class ModelHarness:
                                 latency_ms=now_ms() - tool_start_ms,
                                 error=tool_error,
                                 started_at=tool_started,
-                                ended_at=datetime.now(timezone.utc),
+                                ended_at=datetime.now(UTC),
                             )
                         )
 
@@ -406,13 +407,44 @@ def _accumulate_usage(telemetry: TurnInstrumentation, final: Any) -> None:
     )
 
 
+def _system_blocks(system_prompt: str) -> list[dict[str, Any]]:
+    """Wrap the system prompt in a content block carrying a prompt-cache
+    breakpoint.
+
+    This is the second of the harness's two cache breakpoints (the
+    first sits on the tools array — see _build_tool_schemas). Anthropic
+    caches the prefix up to each breakpoint, so iterations 2+ of the
+    tool-use loop and follow-up turns within the cache TTL re-read
+    tools + system at ~10% of the normal input price instead of
+    re-paying full freight. The system prompt varies more than the
+    tools (date prefix daily, intent data per turn), which is exactly
+    why it gets its own breakpoint: a system miss still leaves the
+    tools-array hit intact.
+    """
+    return [
+        {
+            "type": "text",
+            "text": system_prompt,
+            "cache_control": {"type": "ephemeral"},
+        }
+    ]
+
+
 def _build_tool_schemas(mcp_tools: list[Any]) -> list[dict[str, Any]]:
     """Convert MCP tool definitions to Anthropic tool schemas.
 
     Deep-copy the schema so we don't accidentally mutate the SDK's
     cached objects on subsequent calls.
+
+    The LAST tool carries a prompt-cache breakpoint, which caches the
+    entire tools array — the largest fully-stable block in every
+    request (17 schemas, identical across all calls until the MCP
+    server's tool set changes, which naturally busts the cache). The
+    deliberately tiny router/title prompts are NOT cached: they sit
+    below Anthropic's minimum cacheable prefix length, so marking them
+    would only add cache-write premium for no reads.
     """
-    return [
+    tools: list[dict[str, Any]] = [
         {
             "name": t.name,
             "description": t.description or "",
@@ -420,3 +452,6 @@ def _build_tool_schemas(mcp_tools: list[Any]) -> list[dict[str, Any]]:
         }
         for t in mcp_tools
     ]
+    if tools:
+        tools[-1]["cache_control"] = {"type": "ephemeral"}
+    return tools
