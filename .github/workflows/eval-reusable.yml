@@ -1,7 +1,8 @@
 # Reusable macro-accuracy eval. Called by this repo's eval.yml (PRs +
-# main-branch baseline runs) and by prog-strength-mcp's eval.yml (its
-# PRs, passing mcp_ref). Runs in the CALLER's repository context, so
-# the sticky comment lands on the caller's PR with the caller's token.
+# main-branch baseline runs) and by prog-strength-mcp's /
+# prog-strength-api's eval.yml (their PRs, passing mcp_ref / api_ref).
+# Runs in the CALLER's repository context, so the sticky comment lands
+# on the caller's PR with the caller's token.
 #
 # See prog-strength-docs/sows/custom-meal-macro-accuracy.md.
 name: Macro Eval (reusable)
@@ -13,6 +14,9 @@ on:
         type: string
         default: main
       mcp_ref:
+        type: string
+        default: main
+      api_ref:
         type: string
         default: main
       # main-branch runs publish their results as the eval-baseline
@@ -60,7 +64,21 @@ jobs:
           ref: ${{ inputs.mcp_ref }}
           path: mcp
 
+      - name: Check out api
+        uses: actions/checkout@v4
+        with:
+          repository: Prog-Strength/prog-strength-api
+          ref: ${{ inputs.api_ref }}
+          path: api
+
       - uses: astral-sh/setup-uv@v5
+
+      # The eval runs the REAL Go API (built from the api checkout) so
+      # the lookup endpoint + durable cache are exercised end-to-end.
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: api/go.mod
+          cache-dependency-path: api/go.sum
 
       - name: Sync dependencies
         run: |
@@ -77,6 +95,7 @@ jobs:
         run: |
           uv run python -m evals.run_eval \
             --dataset evals/dataset/custom_meals.json \
+            --api-path ../api \
             --mcp-path ../mcp \
             --trials ${{ inputs.trials }} \
             --concurrency 4 \
@@ -123,6 +142,14 @@ jobs:
           ref: main
           path: mcp-base
 
+      - name: Check out api main for inline baseline
+        if: ${{ !inputs.publish_baseline && steps.baseline.outputs.found != 'true' }}
+        uses: actions/checkout@v4
+        with:
+          repository: Prog-Strength/prog-strength-api
+          ref: main
+          path: api-base
+
       - name: Run inline baseline eval
         if: ${{ !inputs.publish_baseline && steps.baseline.outputs.found != 'true' }}
         working-directory: agent-base
@@ -139,6 +166,7 @@ jobs:
           # comparison just renders without a baseline.
           uv run python -m evals.run_eval \
             --dataset evals/dataset/custom_meals.json \
+            --api-path ../api-base \
             --mcp-path ../mcp-base \
             --trials ${{ inputs.trials }} \
             --concurrency 4 \

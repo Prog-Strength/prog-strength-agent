@@ -1,19 +1,22 @@
 """Macro-accuracy eval runner.
 
-Stands up the full production pipeline locally — fake Prog Strength
-API, real MCP server (from --mcp-path), real ModelRouter + ModelHarness
-— and drives every dataset case through it, scoring the macros the
-agent actually logs against published ground truth.
+Stands up the full production pipeline locally — the REAL Go API on a
+temp SQLite file, the real MCP server (from --mcp-path) pointed at it,
+and the real ModelRouter + ModelHarness — then drives every dataset
+case through it, scoring the macros the agent actually logs (read
+straight from the database) against published ground truth.
 
     uv run python -m evals.run_eval \
         --dataset evals/dataset/custom_meals.json \
+        --api-path ../prog-strength-api \
         --mcp-path ../prog-strength-mcp \
         --trials 3 --out eval-results.json --summary-out eval-summary.md
 
-Requires ANTHROPIC_API_KEY. FATSECRET_CLIENT_ID/SECRET and
-USDA_FDC_API_KEY are forwarded to the MCP subprocess when set; without
-them the lookup tool degrades and the eval measures pure-estimation
-behavior (which is itself a valid baseline).
+Requires ANTHROPIC_API_KEY and a Go toolchain (the API is built from
+--api-path). FATSECRET_CLIENT_ID/SECRET and USDA_FDC_API_KEY are
+forwarded to the API process when set; without them the lookup
+endpoint degrades and the eval measures pure-estimation behavior
+(which is itself a valid baseline).
 """
 
 from __future__ import annotations
@@ -25,6 +28,7 @@ import logging
 import os
 import subprocess
 import sys
+import tempfile
 import time
 from datetime import UTC, datetime
 from pathlib import Path
@@ -34,9 +38,8 @@ import httpx
 from anthropic import AsyncAnthropic
 
 from evals import compare
-from evals.fake_api import FakeAPIServer, Recorder, free_port
+from evals.eval_api import GoAPIServer, free_port, mint_jwt, read_logged_macros
 from evals.scoring import (
-    MACROS,
     Case,
     CaseResult,
     load_dataset,
@@ -54,12 +57,6 @@ DEFAULT_SIMPLE = "claude-haiku-4-5-20251001"
 DEFAULT_COMPLEX = "claude-sonnet-4-6"
 DEFAULT_ROUTER = "claude-haiku-4-5-20251001"
 
-_MCP_FORWARDED_ENV = (
-    "FATSECRET_CLIENT_ID",
-    "FATSECRET_CLIENT_SECRET",
-    "USDA_FDC_API_KEY",
-)
-
 
 async def run(args: argparse.Namespace) -> int:
     cases = load_dataset(args.dataset)
@@ -71,24 +68,27 @@ async def run(args: argparse.Namespace) -> int:
         print("no cases selected", file=sys.stderr)
         return 2
 
-    recorder = Recorder()
-    api_server = FakeAPIServer(recorder, free_port())
-    await api_server.start()
-    mcp_port = free_port()
-    mcp_proc = _spawn_mcp(args.mcp_path, api_server.base_url, mcp_port)
-    try:
-        await _wait_for_mcp(mcp_proc, mcp_port)
-        results = await _run_cases(
-            cases,
-            recorder,
-            mcp_url=f"http://127.0.0.1:{mcp_port}/mcp",
-            trials=args.trials,
-            concurrency=args.concurrency,
-        )
-    finally:
-        mcp_proc.terminate()
-        mcp_proc.wait(timeout=10)
-        await api_server.stop()
+    with tempfile.TemporaryDirectory(prefix="macro-eval-") as tmp:
+        workdir = Path(tmp)
+        api = GoAPIServer(args.api_path, workdir, free_port())
+        log.info("building API from %s …", args.api_path)
+        api.build()
+        await api.start()
+        mcp_port = free_port()
+        mcp_proc = _spawn_mcp(args.mcp_path, api.base_url, mcp_port)
+        try:
+            await _wait_for_mcp(mcp_proc, mcp_port)
+            results = await _run_cases(
+                cases,
+                db_path=api.db_path,
+                mcp_url=f"http://127.0.0.1:{mcp_port}/mcp",
+                trials=args.trials,
+                concurrency=args.concurrency,
+            )
+        finally:
+            mcp_proc.terminate()
+            mcp_proc.wait(timeout=10)
+            api.stop()
 
     doc = results_to_json(results, meta=_build_meta(args, len(cases)))
     Path(args.out).write_text(json.dumps(doc, indent=2) + "\n")
@@ -109,8 +109,8 @@ async def run(args: argparse.Namespace) -> int:
 
 async def _run_cases(
     cases: list[Case],
-    recorder: Recorder,
     *,
+    db_path: Path,
     mcp_url: str,
     trials: int,
     concurrency: int,
@@ -134,7 +134,7 @@ async def _run_cases(
         nonlocal done
         async with semaphore:
             trial = await _run_trial(
-                case_result.case, trial_index, recorder, router, harnesses
+                case_result.case, trial_index, db_path, router, harnesses
             )
             case_result.trials.append(trial)
             done += 1
@@ -147,28 +147,28 @@ async def _run_cases(
                 "no_log" if trial.no_log else f"cal_ape={trial.ape['calories']:.0f}%",
             )
 
-    await asyncio.gather(
-        *(one_trial(r, t) for r in results for t in range(trials))
-    )
+    await asyncio.gather(*(one_trial(r, t) for r in results for t in range(trials)))
     return results
 
 
 async def _run_trial(
     case: Case,
     trial_index: int,
-    recorder: Recorder,
+    db_path: Path,
     router: ModelRouter,
     harnesses: dict[str, ModelHarness],
 ) -> Any:
-    # The bearer token is the correlation id: MCP forwards it to the
-    # fake API verbatim, so concurrent trials never interleave records.
-    token = f"eval-{case.id}-t{trial_index}"
+    # The minted JWT's subject is the correlation id: the API writes
+    # log rows under it, so concurrent trials never interleave. The
+    # API trusts `sub` statelessly — no user bootstrapping needed.
+    user_id = f"eval-{case.id}-t{trial_index}"
+    token = mint_jwt(user_id)
     messages: list[dict[str, Any]] = [{"role": "user", "content": case.message}]
     try:
         decision = await router.route(messages)
         harness = harnesses.get(decision.tier, harnesses["simple"])
         # Drain the SSE stream; the observable outcome we score is what
-        # landed in the fake API, not the streamed text.
+        # landed in the database, not the streamed text.
         async for _ in harness.stream_chat(
             list(messages),
             token,
@@ -182,19 +182,8 @@ async def _run_trial(
         trial.error = str(exc)
         return trial
 
-    logged = _sum_logged(recorder.custom_meals(f"Bearer {token}"))
+    logged = await asyncio.to_thread(read_logged_macros, db_path, user_id)
     return score_trial(logged, case.expect)
-
-
-def _sum_logged(entries: list[dict[str, Any]]) -> dict[str, float] | None:
-    """Sum every custom-meal entry the trial produced. Agents may split
-    one described meal into several log calls; the day's total is what
-    the user experiences, so it's what we score."""
-    if not entries:
-        return None
-    return {
-        m: sum(float(e.get(m, 0) or 0) for e in entries) for m in MACROS
-    }
 
 
 def _spawn_mcp(mcp_path: str, api_base_url: str, port: int) -> subprocess.Popen[bytes]:
@@ -206,9 +195,6 @@ def _spawn_mcp(mcp_path: str, api_base_url: str, port: int) -> subprocess.Popen[
             "MCP_PORT": str(port),
         }
     )
-    for key in _MCP_FORWARDED_ENV:
-        if os.environ.get(key):
-            env[key] = os.environ[key]
     return subprocess.Popen(
         ["uv", "run", "--project", mcp_path, "python", "-m", "prog_strength_mcp"],
         env=env,
@@ -273,6 +259,11 @@ def _local_git_sha() -> str:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dataset", default="evals/dataset/custom_meals.json")
+    parser.add_argument(
+        "--api-path",
+        required=True,
+        help="path to a prog-strength-api checkout (Go toolchain required)",
+    )
     parser.add_argument(
         "--mcp-path",
         required=True,

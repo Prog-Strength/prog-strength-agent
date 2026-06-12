@@ -211,17 +211,50 @@ def test_history_line_is_compact_json():
     assert "\n" not in line
 
 
-# --- fake API recorder ----------------------------------------------------
+# --- real-API plumbing: JWT mint + SQLite readback -------------------------
 
 
-def test_recorder_keys_by_token():
-    from evals.fake_api import Recorder
+def test_mint_jwt_round_trips_subject():
+    import jwt as pyjwt
 
-    recorder = Recorder()
-    recorder.record_custom("Bearer t1", {"calories": 100})
-    recorder.record_custom("Bearer t2", {"calories": 200})
-    recorder.record_custom("Bearer t1", {"calories": 50})
+    from evals.eval_api import SIGNING_KEY, mint_jwt
 
-    assert [e["calories"] for e in recorder.custom_meals("Bearer t1")] == [100, 50]
-    assert [e["calories"] for e in recorder.custom_meals("Bearer t2")] == [200]
-    assert recorder.custom_meals("Bearer t3") == []
+    token = mint_jwt("eval-case-t0")
+    claims = pyjwt.decode(token, SIGNING_KEY, algorithms=["HS256"])
+    assert claims["sub"] == "eval-case-t0"
+    assert claims["exp"] > claims["iat"]
+
+
+def test_read_logged_macros_sums_per_user(tmp_path):
+    import sqlite3
+
+    from evals.eval_api import read_logged_macros
+
+    db = tmp_path / "eval.db"
+    conn = sqlite3.connect(db)
+    # Minimal slice of the real nutrition_log_entries schema
+    # (migration 012) — just the columns the readback touches.
+    conn.execute(
+        """CREATE TABLE nutrition_log_entries (
+            user_id TEXT, calories REAL, protein_g REAL,
+            fat_g REAL, carbs_g REAL, deleted_at DATETIME
+        )"""
+    )
+    rows = [
+        ("u1", 500.0, 25.0, 30.0, 40.0, None),
+        ("u1", 100.0, 5.0, 2.0, 10.0, None),
+        ("u1", 999.0, 9.0, 9.0, 9.0, "2026-06-11"),  # soft-deleted: excluded
+        ("u2", 200.0, 10.0, 5.0, 20.0, None),
+    ]
+    conn.executemany("INSERT INTO nutrition_log_entries VALUES (?,?,?,?,?,?)", rows)
+    conn.commit()
+    conn.close()
+
+    assert read_logged_macros(db, "u1") == {
+        "calories": 600.0,
+        "protein_g": 30.0,
+        "fat_g": 32.0,
+        "carbs_g": 50.0,
+    }
+    assert read_logged_macros(db, "u2")["calories"] == 200.0
+    assert read_logged_macros(db, "u3") is None
