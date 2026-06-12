@@ -1,3 +1,10 @@
+# [0.20.0](https://github.com/Prog-Strength/prog-strength-agent/compare/v0.19.0...v0.20.0) (2026-06-12)
+
+
+### Features
+
+* **agent:** release lookup-first prompts and external-meal routing ([6ae4df9](https://github.com/Prog-Strength/prog-strength-agent/commit/6ae4df9791953bbca7442bf04fa7242169ab88fa)), closes [#8](https://github.com/Prog-Strength/prog-strength-agent/issues/8)
+
 # [0.19.0](https://github.com/Prog-Strength/prog-strength-agent/compare/v0.18.0...v0.19.0) (2026-06-10)
 
 
