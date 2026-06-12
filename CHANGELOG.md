@@ -1,3 +1,10 @@
+# [0.22.0](https://github.com/Prog-Strength/prog-strength-agent/compare/v0.21.0...v0.22.0) (2026-06-12)
+
+
+### Features
+
+* **agent:** surface tool-result request ids on the SSE stream ([#11](https://github.com/Prog-Strength/prog-strength-agent/issues/11)) ([08676ff](https://github.com/Prog-Strength/prog-strength-agent/commit/08676ff855d1f746228dedb9b00a6e00d5f0a18d))
+
 # [0.21.0](https://github.com/Prog-Strength/prog-strength-agent/compare/v0.20.0...v0.21.0) (2026-06-12)
 
 
