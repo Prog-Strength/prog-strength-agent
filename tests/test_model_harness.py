@@ -23,8 +23,8 @@ async def test_harness_uses_intent_registry_to_compose_prompt(monkeypatch):
     """Stub IntentRegistry.run to return known blocks and assert the
     final system prompt the harness would have sent.
     """
-    from prog_strength_agent.intents import IntentRegistry
     from prog_strength_agent import model_harness as mh
+    from prog_strength_agent.intents import IntentRegistry
 
     async def fake_run(cls, intent, session):
         return "RULES_BLOCK", "DATA_BLOCK", False
@@ -344,3 +344,50 @@ async def test_vision_turn_forwards_multimodal_content_unchanged(monkeypatch):
     assert forwarded[0]["type"] == "image"
     # The routing path invokes no tool; telemetry recorded none.
     assert telemetry.tool_calls == []
+
+
+# --- prompt caching -------------------------------------------------------
+
+
+class _FakeTool:
+    def __init__(self, name: str, schema: dict | None = None):
+        self.name = name
+        self.description = f"{name} tool"
+        self.inputSchema = schema or {"type": "object"}
+
+
+def test_tool_schemas_cache_breakpoint_on_last_tool_only():
+    """The tools array is the largest fully-stable prefix block in every
+    request; one breakpoint on the LAST tool caches the whole array.
+    Earlier tools must stay unmarked — each cache_control is a separate
+    breakpoint, and Anthropic caps them at four per request."""
+    from prog_strength_agent.model_harness import _build_tool_schemas
+
+    tools = _build_tool_schemas([_FakeTool("a"), _FakeTool("b"), _FakeTool("c")])
+    assert tools[-1]["cache_control"] == {"type": "ephemeral"}
+    assert all("cache_control" not in t for t in tools[:-1])
+    # Schema conversion is otherwise unchanged.
+    assert [t["name"] for t in tools] == ["a", "b", "c"]
+
+
+def test_tool_schemas_empty_list_unmarked():
+    from prog_strength_agent.model_harness import _build_tool_schemas
+
+    assert _build_tool_schemas([]) == []
+
+
+def test_system_blocks_shape():
+    """System goes to the API as a single text block carrying the
+    second cache breakpoint, so follow-up calls re-read it at the
+    cached-input price. The text itself is passed through verbatim —
+    caching must never change what the model sees."""
+    from prog_strength_agent.model_harness import _system_blocks
+
+    blocks = _system_blocks("PROMPT TEXT")
+    assert blocks == [
+        {
+            "type": "text",
+            "text": "PROMPT TEXT",
+            "cache_control": {"type": "ephemeral"},
+        }
+    ]
