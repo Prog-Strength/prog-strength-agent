@@ -284,13 +284,19 @@ class ModelHarness:
                             )
                         )
 
-                    yield _sse(
-                        {
-                            "type": "tool_result",
-                            "name": block.name,
-                            "is_error": is_error,
-                        }
-                    )
+                    event: dict[str, Any] = {
+                        "type": "tool_result",
+                        "name": block.name,
+                        "is_error": is_error,
+                    }
+                    # Surface the backend's correlation id when the tool
+                    # result carries one (lookup_food_nutrition does) —
+                    # the frontend can read it off the SSE stream in
+                    # devtools and pivot straight into CloudWatch with
+                    # `filter request_id = "…"`.
+                    if request_id := _request_id_from_result(text):
+                        event["request_id"] = request_id
+                    yield _sse(event)
                     tool_results.append(
                         {
                             "type": "tool_result",
@@ -328,6 +334,26 @@ class ModelHarness:
                     completion_reason=completion_reason,
                     error=completion_error,
                 )
+
+
+def _request_id_from_result(text: str) -> str | None:
+    """Pluck a `request_id` out of a JSON-object tool result, if any.
+
+    MCP tools that forward to the Prog Strength API may include the
+    API's X-Request-ID in their result payload for end-to-end tracing.
+    Anything that isn't a JSON object with a string request_id — plain
+    text results, lists, error strings — quietly yields None; tracing
+    is a bonus, never a failure mode.
+    """
+    try:
+        payload = json.loads(text)
+    except (json.JSONDecodeError, TypeError):
+        return None
+    if isinstance(payload, dict):
+        request_id = payload.get("request_id")
+        if isinstance(request_id, str) and request_id:
+            return request_id
+    return None
 
 
 def _sse(payload: dict[str, Any]) -> bytes:

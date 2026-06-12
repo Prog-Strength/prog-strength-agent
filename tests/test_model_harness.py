@@ -391,3 +391,29 @@ def test_system_blocks_shape():
             "cache_control": {"type": "ephemeral"},
         }
     ]
+
+
+# --- tool_result request-id surfacing --------------------------------------
+
+
+def test_request_id_extracted_from_json_object_result():
+    from prog_strength_agent.model_harness import _request_id_from_result
+
+    text = '{"matches": [], "quantity": 1, "request_id": "req-abc-123"}'
+    assert _request_id_from_result(text) == "req-abc-123"
+    # Error-shaped results carry it too (failed lookups stay traceable).
+    assert (
+        _request_id_from_result('{"error": "lookup_failed", "request_id": "req-x"}')
+        == "req-x"
+    )
+
+
+def test_request_id_absent_or_unparseable_yields_none():
+    from prog_strength_agent.model_harness import _request_id_from_result
+
+    assert _request_id_from_result('{"matches": []}') is None  # no id
+    assert _request_id_from_result('{"request_id": 42}') is None  # wrong type
+    assert _request_id_from_result('{"request_id": ""}') is None  # empty
+    assert _request_id_from_result("[1, 2, 3]") is None  # not an object
+    assert _request_id_from_result("plain text tool result") is None
+    assert _request_id_from_result("") is None
