@@ -27,6 +27,7 @@ def test_known_intents_enum():
         "log_nutrition",
         "log_workout",
         "log_bodyweight",
+        "log_daily_steps",
         "analyze_progress",
         "general",
     }
@@ -112,6 +113,26 @@ async def test_log_bodyweight_prefetch_calls_list_with_14_day_window(monkeypatch
     assert "bodyweight" in rules.lower()
     assert "205.4" in data
     assert captured_args.get("list_bodyweight", {}).get("since") is not None
+
+
+@pytest.mark.asyncio
+async def test_log_daily_steps_prefetch_calls_get_steps_with_since_window():
+    from typing import Any
+    captured_args: dict[str, Any] = {}
+
+    class _CaptureSession:
+        async def call_tool(self, name: str, args: dict):
+            captured_args[name] = args
+            return _FakeMCPResult(
+                '{"steps":[{"date":"2026-06-10","steps":8400}],"next_before":null}'
+            )
+
+    rules, data, _failed = await IntentRegistry.run("log_daily_steps", _CaptureSession())
+    assert "steps" in rules.lower()
+    assert "8400" in data
+    assert "2026-06-10" in data
+    assert "RECENT STEPS" in data
+    assert captured_args.get("get_steps", {}).get("since") is not None
 
 
 @pytest.mark.asyncio

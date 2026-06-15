@@ -27,6 +27,7 @@ KNOWN_INTENTS: tuple[str, ...] = (
     "log_nutrition",
     "log_workout",
     "log_bodyweight",
+    "log_daily_steps",
     "analyze_progress",
     "general",
 )
@@ -228,6 +229,50 @@ _register(IntentSpec(
     rules=_LOG_BODYWEIGHT_RULES,
     prefetch=_log_bodyweight_prefetch,
     format=_log_bodyweight_format,
+))
+
+
+async def _log_daily_steps_prefetch(session: Any) -> dict[str, Any]:
+    since = (datetime.now(UTC) - timedelta(days=14)).date().isoformat()
+    res = await session.call_tool("get_steps", {"since": since})
+    decoded = _decode_tool_result(res)
+    # get_steps returns {steps, next_before}; pull the list out. Handle a
+    # bare list defensively in case the tool shape changes.
+    if isinstance(decoded, dict):
+        entries = decoded.get("steps") or []
+    elif isinstance(decoded, list):
+        entries = decoded
+    else:
+        entries = []
+    return {"entries": entries}
+
+
+def _log_daily_steps_format(data: dict[str, Any]) -> str:
+    entries = data.get("entries") or []
+    if not entries:
+        return "RECENT STEPS (last 14 days): (no entries yet)"
+    lines = ["RECENT STEPS (last 14 days, most recent first):"]
+    for e in entries:
+        lines.append(
+            f"- {e.get('date', '?')} · {e.get('steps', '?')} steps"
+        )
+    return "\n".join(lines)
+
+
+_LOG_DAILY_STEPS_RULES = """\
+The user is logging a daily step total. Resolve any relative date \
+("today", "yesterday") to an explicit calendar day (YYYY-MM-DD) before \
+calling log_steps, and CONFIRM the date you logged back to the user. \
+Logging a day replaces that day's total. If a step goal is set, you may \
+briefly note progress toward it.\
+"""
+
+
+_register(IntentSpec(
+    intent="log_daily_steps",
+    rules=_LOG_DAILY_STEPS_RULES,
+    prefetch=_log_daily_steps_prefetch,
+    format=_log_daily_steps_format,
 ))
 
 
