@@ -1,3 +1,10 @@
+# [0.23.0](https://github.com/Prog-Strength/prog-strength-agent/compare/v0.22.1...v0.23.0) (2026-06-15)
+
+
+### Features
+
+* **steps:** add log_daily_steps intent + router classification ([#13](https://github.com/Prog-Strength/prog-strength-agent/issues/13)) ([e0a6ef2](https://github.com/Prog-Strength/prog-strength-agent/commit/e0a6ef2ee7ed73bc17ebcbe49217a6991c9d1036))
+
 ## [0.22.1](https://github.com/Prog-Strength/prog-strength-agent/compare/v0.22.0...v0.22.1) (2026-06-12)
 
 
