@@ -29,6 +29,7 @@ def test_known_intents_enum():
         "log_bodyweight",
         "log_daily_steps",
         "analyze_progress",
+        "plan_workout",
         "general",
     }
 
@@ -88,6 +89,29 @@ async def test_log_workout_prefetch_includes_catalog_and_recent_5():
     })
     rules, data, _failed = await IntentRegistry.run("log_workout", session)
     assert "exercise catalog" in rules.lower() or "look up exercise slugs" in rules.lower()
+    assert "barbell-bench-press" in data
+    assert "back-squat" in data
+    assert "EXERCISE CATALOG" in data
+    assert "RECENT WORKOUTS" in data
+    assert "w-10" in data
+    assert "w-6" in data    # 10..6 = last 5
+    assert "w-5" not in data
+
+
+@pytest.mark.asyncio
+async def test_plan_workout_prefetch_includes_catalog_and_recent_5():
+    session = _FakeSession({
+        "list_exercises": '[{"id":"barbell-bench-press","name":"Barbell Bench Press","muscle_groups":["chest"]},{"id":"back-squat","name":"Back Squat","muscle_groups":["quads"]}]',
+        # 10 recent workouts newest-first (matching the API's
+        # `ORDER BY performed_at DESC`); formatter slices the first 5.
+        "list_workouts": '[' + ','.join(
+            f'{{"id":"w-{i}","performed_at":"2026-05-{i:02d}T18:00:00Z","exercises":[]}}'
+            for i in range(10, 0, -1)
+        ) + ']',
+    })
+    rules, data, _failed = await IntentRegistry.run("plan_workout", session)
+    assert "future" in rules.lower()
+    assert "create_planned_workout" in rules
     assert "barbell-bench-press" in data
     assert "back-squat" in data
     assert "EXERCISE CATALOG" in data

@@ -53,9 +53,10 @@ the classify_request tool.
 tier:
 - simple — CRUD or lookup (logging a workout, listing exercises).
 - complex — multi-step analysis, planning, trend reasoning. ALSO pick
-  complex when the user is logging food from a restaurant or other
-  external source (a chain name, "from <place>", ordered/bought/
-  picked-up wording): when no database match exists those macros are
+  complex when (a) the intent is plan_workout — composing a week of
+  training is multi-step — or (b) the user is logging food from a
+  restaurant or other external source (a chain name, "from <place>",
+  ordered/bought/picked-up wording): when no database match exists those macros are
   estimated from model knowledge, which needs the stronger model.
 
 intent:
@@ -64,6 +65,9 @@ intent:
 - log_bodyweight — the user is logging a bodyweight reading.
 - log_daily_steps — the user is logging a daily step count.
 - analyze_progress — the user wants insight, trends, or planning advice.
+- plan_workout — the user wants to schedule/plan FUTURE workouts
+  ("plan my week", "set up next week's training", "schedule my
+  upper/lower split").
 - general — anything else (greeting, lookup, off-topic).
 
 When uncertain on intent, pick "general". When uncertain on tier,

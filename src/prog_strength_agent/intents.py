@@ -29,6 +29,7 @@ KNOWN_INTENTS: tuple[str, ...] = (
     "log_bodyweight",
     "log_daily_steps",
     "analyze_progress",
+    "plan_workout",
     "general",
 )
 
@@ -194,6 +195,59 @@ _register(IntentSpec(
     rules=_LOG_WORKOUT_RULES,
     prefetch=_log_workout_prefetch,
     format=_log_workout_format,
+))
+
+
+async def _plan_workout_prefetch(session: Any) -> dict[str, Any]:
+    catalog_task = session.call_tool("list_exercises", {})
+    workouts_task = session.call_tool("list_workouts", {})
+    catalog_res, workouts_res = await asyncio.gather(catalog_task, workouts_task)
+    workouts = _decode_tool_result(workouts_res)
+    # API returns ~50 most-recent (newest first, ORDER BY performed_at
+    # DESC); take the first 5 for prompt size. Recent sessions inform a
+    # sensible forward split.
+    return {
+        "catalog": _decode_tool_result(catalog_res),
+        "recent_workouts": workouts[:5],
+    }
+
+
+def _plan_workout_format(data: dict[str, Any]) -> str:
+    lines = []
+    lines.append("EXERCISE CATALOG (slug · name · primary muscle groups):")
+    for e in data.get("catalog", []):
+        muscles = ", ".join(e.get("muscle_groups", []) or [])
+        lines.append(f"- {e.get('id', '?')} · {e.get('name', '?')} · {muscles}")
+    if not data.get("catalog"):
+        lines.append("- (catalog unavailable)")
+    lines.append("")
+    lines.append("RECENT WORKOUTS (id · performed_at · exercise count):")
+    for w in data.get("recent_workouts", []):
+        lines.append(
+            f"- {w.get('id', '?')} · "
+            f"{w.get('performed_at', '?')} · "
+            f"{len(w.get('exercises') or [])} exercise(s)"
+        )
+    if not data.get("recent_workouts"):
+        lines.append("- (no recent workouts logged)")
+    return "\n".join(lines)
+
+
+_PLAN_WORKOUT_RULES = """\
+The user wants to plan FUTURE training (not log a completed session). \
+Use create_planned_workout once per training day, building the schedule \
+in the user's timezone with RFC3339 windows; look up exercise slugs from \
+the catalog below for any target agenda; space rest days sensibly. Only \
+push to Google Calendar (schedule_workout_to_calendar) if the user \
+explicitly asks.\
+"""
+
+
+_register(IntentSpec(
+    intent="plan_workout",
+    rules=_PLAN_WORKOUT_RULES,
+    prefetch=_plan_workout_prefetch,
+    format=_plan_workout_format,
 ))
 
 

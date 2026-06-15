@@ -112,3 +112,12 @@ def test_router_prompt_routes_external_meal_estimation_to_complex():
 
     assert "restaurant" in ROUTER_SYSTEM_PROMPT
     assert "external source" in ROUTER_SYSTEM_PROMPT
+
+
+def test_router_prompt_mentions_plan_workout_intent():
+    """The router must know the plan_workout intent so 'plan my week'
+    routes to the planning enrichment (and complex tier)."""
+    from prog_strength_agent.model_router import ROUTER_SYSTEM_PROMPT
+
+    assert "plan_workout" in ROUTER_SYSTEM_PROMPT
+    assert "plan my week" in ROUTER_SYSTEM_PROMPT

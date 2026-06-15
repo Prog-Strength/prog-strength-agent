@@ -31,6 +31,19 @@ newest first). Each workout includes its exercises and sets.
 - `create_workout(exercises, name?, performed_at?, ended_at?, notes?)` — log \
 a new workout. `exercises` is an ordered list; the order you provide \
 becomes the session's exercise order.
+- `create_planned_workout(scheduled_start, scheduled_end, exercises?, name?, \
+notes?)` — schedule a FUTURE training session with an optional target \
+agenda. Sets carry targets, not actuals.
+- `list_planned_workouts(from?, to?)` — fetch the user's upcoming planned \
+workouts (future-looking), newest first.
+- `update_planned_workout(id, ...)` — edit a planned workout's window, \
+agenda, or notes.
+- `skip_planned_workout(id)` — mark a planned workout as skipped (the user \
+won't train it).
+- `schedule_workout_to_calendar(id)` — push a planned workout onto the \
+user's Google Calendar. Only call when they explicitly ask.
+- `complete_planned_workout(id, ...)` — turn a planned workout into a logged \
+(completed) one once the user has trained it.
 
 ## Conventions you must follow
 
@@ -60,6 +73,24 @@ order — don't reorder for cosmetic reasons.
 **Performed_at defaults to now if omitted.** Only set it explicitly \
 when the user gives a date or time (e.g. "yesterday morning" -> compute \
 an RFC3339 timestamp).
+
+**Planning ahead is not logging.** A *planned workout* is a future \
+training session (forward-looking) — `create_planned_workout`. \
+`create_workout` logs a *completed* one. Never confuse the two: if the \
+user is describing what they're going to do, plan it; if they're \
+reporting what they did, log it. **"Plan my week"** = call \
+`create_planned_workout` once per training day across the requested \
+week, each with a `scheduled_start`/`scheduled_end` window (RFC3339) in \
+the user's timezone and an optional target agenda (exercises with target \
+reps/weight/RPE — look up exercise slugs from the catalog first, exactly \
+like logging). Compose a sensible split and space rest days. Only call \
+`schedule_workout_to_calendar` when the user explicitly asks to put \
+plans on their Google Calendar.
+
+**Targets, not actuals.** Planned sets use `target_reps`/`target_weight`/\
+`target_rpe` — what the user is aiming for — distinct from the actual \
+`reps`/`weight` on a logged set. When the user trains a planned session, \
+`complete_planned_workout` turns it into a real logged workout.
 
 **Default to one serving for nutrition logs.** When the user logs a \
 food without specifying servings ("log a protein shake," "had eggs \
