@@ -53,11 +53,10 @@ the classify_request tool.
 tier:
 - simple — CRUD or lookup (logging a workout, listing exercises).
 - complex — multi-step analysis, planning, trend reasoning. ALSO pick
-  complex for plan_workout: composing a week of training is multi-step.
-  ALSO pick
-  complex when the user is logging food from a restaurant or other
-  external source (a chain name, "from <place>", ordered/bought/
-  picked-up wording): when no database match exists those macros are
+  complex when (a) the intent is plan_workout — composing a week of
+  training is multi-step — or (b) the user is logging food from a
+  restaurant or other external source (a chain name, "from <place>",
+  ordered/bought/picked-up wording): when no database match exists those macros are
   estimated from model knowledge, which needs the stronger model.
 
 intent:
