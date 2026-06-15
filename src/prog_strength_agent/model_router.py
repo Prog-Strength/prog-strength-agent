@@ -62,6 +62,7 @@ intent:
 - log_nutrition — the user wants to record food/drink they consumed.
 - log_workout — the user is reporting a completed workout.
 - log_bodyweight — the user is logging a bodyweight reading.
+- log_daily_steps — the user is logging a daily step count.
 - analyze_progress — the user wants insight, trends, or planning advice.
 - general — anything else (greeting, lookup, off-topic).
 
