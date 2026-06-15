@@ -159,6 +159,29 @@ def test_custom_meal_logging_survives_date_prefix():
     assert '"meal"' in out
 
 
+def test_system_prompt_covers_planned_workouts():
+    """The planned-workout convention must land in the base prompt so the
+    model knows planning ahead is distinct from logging a completed
+    session and how to 'plan my week'."""
+    assert "Planning ahead" in SYSTEM_PROMPT
+    assert "create_planned_workout" in SYSTEM_PROMPT
+    assert "list_planned_workouts" in SYSTEM_PROMPT
+    assert "schedule_workout_to_calendar" in SYSTEM_PROMPT
+    assert "complete_planned_workout" in SYSTEM_PROMPT
+    # Planned sets carry targets, not actuals.
+    assert "target_reps" in SYSTEM_PROMPT
+
+
+def test_planned_workouts_survive_date_prefix():
+    """The planned-workout guidance is still present after the per-request
+    date prefix is prepended (it lives in the base, not the prefix)."""
+    out = build_chat_system_prompt(
+        "UTC", now=datetime(2026, 5, 31, 12, 0, tzinfo=ZoneInfo("UTC"))
+    )
+    assert "create_planned_workout" in out
+    assert "Planning ahead" in out
+
+
 def test_compose_system_prompt_omits_empty_sections():
     from prog_strength_agent.prompt import compose_system_prompt
     assert compose_system_prompt(base="BASE", rules="", data="") == "BASE"
