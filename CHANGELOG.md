@@ -1,3 +1,10 @@
+# [0.24.0](https://github.com/Prog-Strength/prog-strength-agent/compare/v0.23.0...v0.24.0) (2026-06-15)
+
+
+### Features
+
+* teach the agent to plan a week of workouts ([#14](https://github.com/Prog-Strength/prog-strength-agent/issues/14)) ([a3d3f7f](https://github.com/Prog-Strength/prog-strength-agent/commit/a3d3f7f70d9b90f9d4cc52625d2fa253ab8d1f99))
+
 # [0.23.0](https://github.com/Prog-Strength/prog-strength-agent/compare/v0.22.1...v0.23.0) (2026-06-15)
 
 
