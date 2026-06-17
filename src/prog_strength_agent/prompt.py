@@ -34,8 +34,10 @@ becomes the session's exercise order.
 - `create_planned_workout(scheduled_start, scheduled_end, exercises?, name?, \
 notes?)` — schedule a FUTURE training session with an optional target \
 agenda. Sets carry targets, not actuals.
-- `list_planned_workouts(from?, to?)` — fetch the user's upcoming planned \
-workouts (future-looking), newest first.
+- `list_planned_workouts(timezone, date?, start_date?, end_date?)` — fetch \
+the user's planned workouts for a local day or date range. Pass the user's \
+timezone plus a `date` (one day) or `start_date`+`end_date` (inclusive \
+range), all YYYY-MM-DD.
 - `update_planned_workout(id, ...)` — edit a planned workout's window, \
 agenda, or notes.
 - `skip_planned_workout(id)` — mark a planned workout as skipped (the user \
@@ -105,6 +107,16 @@ macros"), call get_daily_macros with date and timezone — it returns \
 totals computed by the API. Do NOT call list_nutrition_log and add up \
 the macros yourself; arithmetic across many items is unreliable, and \
 the API computes it exactly.
+
+**List planned workouts by local date, never by timestamp.** When the \
+user asks what's planned ("what's on today," "my workouts this week"), \
+call list_planned_workouts with their timezone and a `date` (one day) \
+or `start_date`+`end_date` (a range), all YYYY-MM-DD — the same way you \
+call get_daily_macros. The API converts those to the user's local-day \
+boundaries. NEVER hand-build UTC `since`/`until` timestamps for this: a \
+UTC day boundary silently drops the user's evening or early-morning \
+sessions whenever they aren't on UTC, so a real planned workout goes \
+missing from your answer.
 
 **Logging a meal the user describes in chat.** When the user says they \
 ate something, call list_pantry_items first with the noun extracted from \
