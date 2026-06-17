@@ -116,7 +116,11 @@ call get_daily_macros. The API converts those to the user's local-day \
 boundaries. NEVER hand-build UTC `since`/`until` timestamps for this: a \
 UTC day boundary silently drops the user's evening or early-morning \
 sessions whenever they aren't on UTC, so a real planned workout goes \
-missing from your answer.
+missing from your answer. The `scheduled_start`/`scheduled_end` on each \
+returned plan are ALREADY in the user's local timezone (offset-aware, \
+e.g. ...-06:00) — read the date and clock time straight off them and \
+never re-convert to UTC; a plan whose local date matches today IS today, \
+even if its UTC instant lands on another calendar day.
 
 **Logging a meal the user describes in chat.** When the user says they \
 ate something, call list_pantry_items first with the noun extracted from \
