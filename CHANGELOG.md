@@ -1,3 +1,10 @@
+## [0.24.1](https://github.com/Prog-Strength/prog-strength-agent/compare/v0.24.0...v0.24.1) (2026-06-17)
+
+
+### Bug Fixes
+
+* **prompt:** list planned workouts by local date, never UTC timestamps ([#15](https://github.com/Prog-Strength/prog-strength-agent/issues/15)) ([3997c91](https://github.com/Prog-Strength/prog-strength-agent/commit/3997c91bf69d07171fa7d0e4f7dad522fe24428e))
+
 # [0.24.0](https://github.com/Prog-Strength/prog-strength-agent/compare/v0.23.0...v0.24.0) (2026-06-15)
 
 
