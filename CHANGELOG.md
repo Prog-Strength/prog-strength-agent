@@ -1,3 +1,10 @@
+## [0.24.2](https://github.com/Prog-Strength/prog-strength-agent/compare/v0.24.1...v0.24.2) (2026-06-17)
+
+
+### Bug Fixes
+
+* **prompt:** read planned-workout times as already-local ([#16](https://github.com/Prog-Strength/prog-strength-agent/issues/16)) ([ffd6dd5](https://github.com/Prog-Strength/prog-strength-agent/commit/ffd6dd5846ccd6841ea4874d85e9e5b84ddbdeb4))
+
 ## [0.24.1](https://github.com/Prog-Strength/prog-strength-agent/compare/v0.24.0...v0.24.1) (2026-06-17)
 
 
