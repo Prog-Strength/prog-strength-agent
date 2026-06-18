@@ -67,6 +67,18 @@ MAX_TOOL_LOOP = 8
 _NUTRITION_TZ_TOOLS = {"list_nutrition_log", "get_daily_macros"}
 
 
+def _batch_item_count(name: str, block_input: Any) -> int | None:
+    """Item count for a log_consumption_batch tool call, for the web chip.
+    None for every other tool, or when the input isn't available yet (the
+    streamed tool_use input can be empty at content_block_start)."""
+    if name != "log_consumption_batch":
+        return None
+    if not isinstance(block_input, dict):
+        return None
+    items = block_input.get("items")
+    return len(items) if isinstance(items, list) else None
+
+
 def _maybe_inject_timezone(
     name: str,
     tool_input: dict[str, Any],
@@ -203,12 +215,16 @@ class ModelHarness:
                         if event.type == "content_block_start":
                             block = event.content_block
                             if block.type == "tool_use":
-                                yield _sse(
-                                    {
-                                        "type": "tool_use_start",
-                                        "name": block.name,
-                                    }
+                                start_event: dict[str, Any] = {
+                                    "type": "tool_use_start",
+                                    "name": block.name,
+                                }
+                                count = _batch_item_count(
+                                    block.name, getattr(block, "input", None)
                                 )
+                                if count is not None:
+                                    start_event["item_count"] = count
+                                yield _sse(start_event)
                         elif event.type == "content_block_delta":
                             delta = event.delta
                             if delta.type == "text_delta":
