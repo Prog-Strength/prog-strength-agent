@@ -1,3 +1,10 @@
+# [0.25.0](https://github.com/Prog-Strength/prog-strength-agent/compare/v0.24.2...v0.25.0) (2026-06-18)
+
+
+### Features
+
+* **agent:** stream item_count on tool_use_start; point prompt at log_consumption_batch ([#17](https://github.com/Prog-Strength/prog-strength-agent/issues/17)) ([d7c647b](https://github.com/Prog-Strength/prog-strength-agent/commit/d7c647baff60e9cb7fe0bfd666a52202269daa97))
+
 ## [0.24.2](https://github.com/Prog-Strength/prog-strength-agent/compare/v0.24.1...v0.24.2) (2026-06-17)
 
 
