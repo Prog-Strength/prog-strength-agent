@@ -113,11 +113,11 @@ def test_system_prompt_nudges_get_daily_macros_for_totals():
 
 def test_system_prompt_covers_custom_meal_logging():
     """The custom-meals guidance must steer the model through the
-    pantry-first lookup, the log_custom_meal fallback, and the
+    pantry-first lookup, the log_consumption_batch fallback, and the
     promote-to-pantry ask. Lives in the base prompt so the model has it
     regardless of intent classification."""
     assert "list_pantry_items" in SYSTEM_PROMPT
-    assert "log_custom_meal" in SYSTEM_PROMPT
+    assert "log_consumption_batch" in SYSTEM_PROMPT
     assert "create_pantry_item" in SYSTEM_PROMPT
     # The exact save-to-pantry ask phrasing the agent should append.
     assert "save" in SYSTEM_PROMPT
@@ -151,7 +151,7 @@ def test_custom_meal_logging_survives_date_prefix():
         "UTC", now=datetime(2026, 5, 31, 12, 0, tzinfo=ZoneInfo("UTC"))
     )
     assert "list_pantry_items" in out
-    assert "log_custom_meal" in out
+    assert "log_consumption_batch" in out
     assert "lookup_food_nutrition" in out
     assert "create_pantry_item" in out
     assert "to your pantry so I can find it next time" in out

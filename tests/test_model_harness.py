@@ -110,6 +110,29 @@ def test_inject_does_not_mutate_input():
     assert original == {"date": "2026-06-03"}
 
 
+# --- batch item_count on tool_use_start -------------------------------
+#
+# `_batch_item_count` is the pure helper the harness uses to stamp the
+# web chip's count onto the tool_use_start SSE event. It's tested
+# directly (same rationale as `_maybe_inject_timezone` above — the suite
+# intentionally does not fake the streaming loop).
+
+
+def test_batch_item_count_for_batch_tool():
+    from prog_strength_agent.model_harness import _batch_item_count
+
+    assert _batch_item_count("log_consumption_batch", {"items": [1, 2, 3]}) == 3
+    assert _batch_item_count("log_consumption_batch", {"items": []}) == 0
+
+
+def test_batch_item_count_none_for_other_tools_and_missing_input():
+    from prog_strength_agent.model_harness import _batch_item_count
+
+    assert _batch_item_count("list_pantry_items", {"items": [1]}) is None
+    assert _batch_item_count("log_consumption_batch", None) is None
+    assert _batch_item_count("log_consumption_batch", {}) is None
+
+
 # --- vision routing (_has_image + _route_and_stream short-circuit) -----
 #
 # Image turns must skip the intent classifier entirely and force the
