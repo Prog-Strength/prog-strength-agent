@@ -206,3 +206,48 @@ async def test_route_memory_failure_injects_nothing_and_completes(monkeypatch):
     # The turn still streamed, and a retrieval exception injected nothing.
     assert chunks  # streamed at least one chunk
     assert fake.received_memories == []
+
+
+@pytest.mark.asyncio
+async def test_route_router_failure_propagates(monkeypatch):
+    """A router failure must NOT be swallowed by the gather(return_exceptions=
+    True): _route_and_stream re-raises it so the pre-feature behaviour (a
+    broken classifier fails the turn) is preserved. The harness must never be
+    invoked. The finally block still fires its telemetry."""
+    from prog_strength_agent import server
+    from prog_strength_agent.telemetry import TurnInstrumentation
+
+    class _FakeClient:
+        async def get_session_intent(self, session_id):
+            return None
+
+        async def retrieve_memories(self, user_id, query):
+            return ["remembered fact"]
+
+    monkeypatch.setattr(server, "api_client", _FakeClient())
+
+    async def _boom_route(messages, telemetry=None, prior_intent=None):
+        raise RuntimeError("router down")
+
+    monkeypatch.setattr(server.router_obj, "route", _boom_route)
+
+    fake = _FakeHarness(model="m")
+    monkeypatch.setitem(server.HARNESSES, "simple", fake)
+
+    # Observe that the finally block still records metrics for the turn.
+    recorded: list[TurnInstrumentation] = []
+    monkeypatch.setattr(
+        server, "record_prometheus_metrics", lambda t: recorded.append(t)
+    )
+
+    messages = [{"role": "user", "content": "hi"}]
+    telemetry = TurnInstrumentation.new(user_id="u-1", session_id="s-1")
+
+    with pytest.raises(RuntimeError, match="router down"):
+        async for _ in server._route_and_stream(messages, "tok", telemetry, "SYS"):
+            pass
+
+    # The harness was never reached; the router failure short-circuited.
+    assert fake.received_memories == "UNSET"
+    # The finally block still fired its telemetry despite the raise.
+    assert recorded == [telemetry]
