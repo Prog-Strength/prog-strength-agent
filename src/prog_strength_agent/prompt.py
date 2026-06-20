@@ -302,15 +302,20 @@ def _resolve_timezone(client_timezone: str | None) -> tuple[str, ZoneInfo]:
         return "UTC", ZoneInfo("UTC")
 
 
-def compose_system_prompt(*, base: str, rules: str = "", data: str = "") -> str:
+def compose_system_prompt(
+    *, base: str, rules: str = "", data: str = "", background: str = ""
+) -> str:
     """Concatenate the base system prompt with optional intent-specific
-    rules and data blocks. Empty sections are skipped entirely (not
-    rendered as blank separators) so a `general` intent or a failed
-    prefetch produces a prompt visually identical to today's.
+    rules and data blocks, plus a trailing background (memory) block.
+    Empty sections are skipped entirely (not rendered as blank
+    separators) so a `general` intent, a failed prefetch, or empty
+    memory produces a prompt visually identical to today's.
     """
     parts = [base]
     if rules:
         parts.append(rules)
     if data:
         parts.append(data)
+    if background:
+        parts.append(background)
     return "\n\n".join(parts)

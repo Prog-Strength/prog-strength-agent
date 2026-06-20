@@ -17,6 +17,7 @@ done, and error.
 CORS allows the configured frontend origins (Vercel-hosted in prod).
 """
 
+import asyncio
 import logging
 from collections.abc import AsyncGenerator
 from typing import Any
@@ -463,6 +464,32 @@ def _has_image(messages: list[dict[str, Any]]) -> bool:
     return False
 
 
+def _last_user_text(messages: list[dict[str, Any]]) -> str:
+    """Return the text of the most recent user-authored message, as the
+    query for memory retrieval. Content may be a plain string or a list
+    of content blocks; for a list, the text of `type=="text"` blocks is
+    joined (vision/image blocks are ignored). Returns "" when there is
+    no user message or it carries no text.
+    """
+    for m in reversed(messages):
+        if m.get("role") != "user":
+            continue
+        content = m.get("content")
+        if isinstance(content, str):
+            return content
+        if isinstance(content, list):
+            texts = [
+                block["text"]
+                for block in content
+                if isinstance(block, dict)
+                and block.get("type") == "text"
+                and isinstance(block.get("text"), str)
+            ]
+            return " ".join(texts)
+        return ""
+    return ""
+
+
 async def _route_and_stream(
     messages: list[dict[str, Any]],
     user_token: str,
@@ -510,11 +537,33 @@ async def _route_and_stream(
         if api_client is not None and telemetry.session_id:
             prior_intent = await api_client.get_session_intent(telemetry.session_id)
 
-        decision = await router_obj.route(
+        # Run memory retrieval alongside the router so it never adds to
+        # the turn's latency. Best-effort: any retrieval failure (or no
+        # client / no user) yields an empty list, which renders to no
+        # background block — the prompt is then byte-for-byte unchanged.
+        decision_task = router_obj.route(
             messages,
             telemetry=telemetry,
             prior_intent=prior_intent,
         )
+        if api_client is not None and telemetry.user_id:
+            memory_task = api_client.retrieve_memories(
+                telemetry.user_id, _last_user_text(messages)
+            )
+        else:
+
+            async def _no_memories() -> list[str]:
+                return []
+
+            memory_task = _no_memories()
+        decision, memories = await asyncio.gather(
+            decision_task, memory_task, return_exceptions=True
+        )
+        if isinstance(memories, Exception) or not isinstance(memories, list):
+            memories = []
+        if isinstance(decision, Exception):
+            raise decision  # preserve today's router-failure behaviour exactly
+
         harness = HARNESSES.get(decision.tier, HARNESSES["simple"])
         async for chunk in harness.stream_chat(
             messages,
@@ -523,6 +572,7 @@ async def _route_and_stream(
             system_prompt=system_prompt,
             intent=decision.intent,
             client_timezone=client_timezone,
+            memories=memories,
         ):
             yield chunk
     finally:
