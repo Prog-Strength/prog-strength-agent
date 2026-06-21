@@ -28,6 +28,7 @@ from mcp import ClientSession
 from mcp.client.streamable_http import streamablehttp_client
 
 from prog_strength_agent.intents import IntentRegistry
+from prog_strength_agent.memory import format_memory_block
 from prog_strength_agent.prompt import SYSTEM_PROMPT, compose_system_prompt
 from prog_strength_agent.telemetry import (
     MessageRecord,
@@ -45,14 +46,25 @@ async def build_intent_aware_prompt(
     base: str,
     intent: str,
     session: Any,
+    memories: list[str] | None = None,
 ) -> tuple[str, bool]:
     """Compose the per-turn system prompt and return it alongside the
     prefetch-failed flag. Pulled out of stream_chat so tests can pin
     the composition without mocking the entire Anthropic SDK + MCP
     session.
+
+    Retrieved `memories` (if any) are rendered as a trailing background
+    block. Empty/None memories render to "" so the composed prompt is
+    byte-for-byte identical to a turn with memory disabled.
     """
     rules, data, failed = await IntentRegistry.run(intent, session)
-    return compose_system_prompt(base=base, rules=rules, data=data), failed
+    background = format_memory_block(memories or [])
+    return (
+        compose_system_prompt(
+            base=base, rules=rules, data=data, background=background
+        ),
+        failed,
+    )
 
 
 # Cap the tool-use loop to keep a runaway model from hammering MCP in
@@ -128,6 +140,7 @@ class ModelHarness:
         system_prompt: str | None = None,
         intent: str = "general",
         client_timezone: str | None = None,
+        memories: list[str] | None = None,
     ) -> AsyncGenerator[bytes, None]:
         """Run the tool-use loop, yielding SSE-formatted bytes.
 
@@ -185,6 +198,7 @@ class ModelHarness:
                 base=system_prompt or SYSTEM_PROMPT,
                 intent=intent,
                 session=session,
+                memories=memories,
             )
             if telemetry is not None:
                 telemetry.intent_prefetch_duration_ms = now_ms() - prefetch_started

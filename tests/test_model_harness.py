@@ -205,6 +205,7 @@ class _FakeHarness:
         self.called = False
         self.received_messages = None
         self.received_intent = None
+        self.received_memories = None
 
     async def stream_chat(
         self,
@@ -214,10 +215,12 @@ class _FakeHarness:
         system_prompt=None,
         intent="general",
         client_timezone=None,
+        memories=None,
     ):
         self.called = True
         self.received_messages = messages
         self.received_intent = intent
+        self.received_memories = memories
         yield _sse_model_chosen(self.model)
 
 
