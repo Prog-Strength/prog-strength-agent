@@ -1,3 +1,10 @@
+# [0.26.0](https://github.com/Prog-Strength/prog-strength-agent/compare/v0.25.0...v0.26.0) (2026-06-21)
+
+
+### Features
+
+* **agent:** inject retrieved vector memories as a background prompt block ([#18](https://github.com/Prog-Strength/prog-strength-agent/issues/18)) ([0bab1bc](https://github.com/Prog-Strength/prog-strength-agent/commit/0bab1bcff38dedfc152644338901ae5a5a690964))
+
 # [0.25.0](https://github.com/Prog-Strength/prog-strength-agent/compare/v0.24.2...v0.25.0) (2026-06-18)
 
 
