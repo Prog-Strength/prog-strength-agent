@@ -1,3 +1,10 @@
+## [0.27.1](https://github.com/Prog-Strength/prog-strength-agent/compare/v0.27.0...v0.27.1) (2026-06-22)
+
+
+### Bug Fixes
+
+* **agent:** log intent-prefetch tool calls to web app ([#20](https://github.com/Prog-Strength/prog-strength-agent/issues/20)) ([a9b62ea](https://github.com/Prog-Strength/prog-strength-agent/commit/a9b62ea12a6f8f0a2dd6c7ee3c00ca77157e6fdf))
+
 # [0.27.0](https://github.com/Prog-Strength/prog-strength-agent/compare/v0.26.0...v0.27.0) (2026-06-22)
 
 
