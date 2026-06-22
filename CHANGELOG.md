@@ -1,3 +1,10 @@
+# [0.27.0](https://github.com/Prog-Strength/prog-strength-agent/compare/v0.26.0...v0.27.0) (2026-06-22)
+
+
+### Features
+
+* **agent:** analyze_training intent on the training snapshot ([#19](https://github.com/Prog-Strength/prog-strength-agent/issues/19)) ([9f48b2c](https://github.com/Prog-Strength/prog-strength-agent/commit/9f48b2cf713f69ae9cd62ca58f837c544aef69f3))
+
 # [0.26.0](https://github.com/Prog-Strength/prog-strength-agent/compare/v0.25.0...v0.26.0) (2026-06-21)
 
 
