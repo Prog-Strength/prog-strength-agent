@@ -18,8 +18,9 @@ can label the assistant turn before any text streams.
 import copy
 import json
 import logging
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Iterable, Iterator
 from contextlib import AsyncExitStack
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
@@ -114,6 +115,125 @@ def _maybe_inject_timezone(
     return result
 
 
+def _tool_start_event(name: str, tool_input: Any) -> dict[str, Any]:
+    """The `tool_use_start` SSE payload the web app reads to show which
+    tool the agent is calling. Shared by the model loop and the prefetch
+    path so the two can't drift on the wire shape (e.g. the batch chip)."""
+    event: dict[str, Any] = {"type": "tool_use_start", "name": name}
+    count = _batch_item_count(name, tool_input)
+    if count is not None:
+        event["item_count"] = count
+    return event
+
+
+def _tool_result_event(name: str, text: str | None, is_error: bool) -> dict[str, Any]:
+    """The `tool_result` SSE payload, surfacing the backend correlation
+    id when the result carries one. Shared by the model loop and the
+    prefetch path (see _tool_start_event)."""
+    event: dict[str, Any] = {
+        "type": "tool_result",
+        "name": name,
+        "is_error": is_error,
+    }
+    if text is not None and (request_id := _request_id_from_result(text)):
+        event["request_id"] = request_id
+    return event
+
+
+@dataclass
+class _PrefetchCall:
+    """One tool call captured during intent prefetch, carrying everything
+    needed to replay it onto the telemetry + SSE paths."""
+
+    record: "ToolCallRecord"
+    arguments: Any
+    text: str | None
+    is_error: bool
+
+
+class _PrefetchToolRecorder:
+    """Wraps the MCP session handed to an intent's prefetch so every
+    `call_tool` it makes is captured.
+
+    Intent prefetch (e.g. analyze_training's get_training_snapshot) runs
+    before the model loop. Those calls would otherwise bypass the only
+    two paths that report tool usage to the web app — telemetry.tool_calls
+    and the SSE stream — and so be invisible in the UI. The harness drains
+    `.calls` after prefetch and replays them via `_prefetch_tool_events`.
+
+    Everything other than `call_tool` is delegated to the real session, so
+    a prefetch that uses other session methods still works.
+    """
+
+    def __init__(self, session: Any):
+        self._session = session
+        self.calls: list[_PrefetchCall] = []
+
+    def __getattr__(self, name: str) -> Any:
+        # Only reached for attributes not defined on the wrapper itself
+        # (call_tool, _session, calls are) — delegate the rest.
+        return getattr(self._session, name)
+
+    async def call_tool(self, name: str, arguments: Any = None, *args: Any, **kwargs: Any) -> Any:
+        started_at = datetime.now(UTC)
+        start_ms = now_ms()
+        try:
+            result = await self._session.call_tool(name, arguments, *args, **kwargs)
+        except Exception as exc:
+            # Record the failed attempt (so it's visible) then let the
+            # prefetch's own error handling see the exception unchanged.
+            self.calls.append(
+                _PrefetchCall(
+                    record=ToolCallRecord(
+                        tool_name=name,
+                        arguments_json=_safe_json(arguments),
+                        result_summary=None,
+                        latency_ms=now_ms() - start_ms,
+                        error=str(exc),
+                        started_at=started_at,
+                        ended_at=datetime.now(UTC),
+                    ),
+                    arguments=arguments,
+                    text=None,
+                    is_error=True,
+                )
+            )
+            raise
+        text = "\n".join(getattr(c, "text", str(c)) for c in result.content)
+        is_error = bool(getattr(result, "isError", False))
+        self.calls.append(
+            _PrefetchCall(
+                record=ToolCallRecord(
+                    tool_name=name,
+                    arguments_json=_safe_json(arguments),
+                    result_summary=truncate_result(text),
+                    latency_ms=now_ms() - start_ms,
+                    error=text if is_error else None,
+                    started_at=started_at,
+                    ended_at=datetime.now(UTC),
+                ),
+                arguments=arguments,
+                text=text,
+                is_error=is_error,
+            )
+        )
+        return result
+
+
+def _prefetch_tool_events(
+    calls: Iterable[_PrefetchCall],
+    telemetry: "TurnInstrumentation | None",
+) -> Iterator[bytes]:
+    """Replay captured prefetch tool calls onto both reporting paths:
+    append each to telemetry.tool_calls and yield the same
+    tool_use_start / tool_result SSE pair the model loop emits."""
+    for call in calls:
+        if telemetry is not None:
+            telemetry.tool_calls.append(call.record)
+        yield _sse(_tool_start_event(call.record.tool_name, call.arguments))
+        yield _sse(_tool_result_event(call.record.tool_name, call.text, call.is_error))
+
+
 class ModelHarness:
     """One Claude model wired up to the MCP tool layer.
 
@@ -196,16 +316,25 @@ class ModelHarness:
             tools_for_claude = _build_tool_schemas(mcp_tools)
 
             prefetch_started = now_ms()
+            # Wrap the session so any tool the prefetch calls is captured —
+            # those calls happen before the model loop and would otherwise
+            # never reach the web app's tool-usage log.
+            prefetch_recorder = _PrefetchToolRecorder(session)
             composed_system_prompt, prefetch_failed = await build_intent_aware_prompt(
                 base=system_prompt or SYSTEM_PROMPT,
                 intent=intent,
-                session=session,
+                session=prefetch_recorder,
                 client_timezone=client_timezone,
                 memories=memories,
             )
             if telemetry is not None:
                 telemetry.intent_prefetch_duration_ms = now_ms() - prefetch_started
                 telemetry.intent_prefetch_failed = prefetch_failed
+
+            # Surface the prefetch's tool calls (telemetry + SSE) before any
+            # model text, so the UI shows them just like model-issued calls.
+            for chunk in _prefetch_tool_events(prefetch_recorder.calls, telemetry):
+                yield chunk
 
             # Accumulator for the assistant's user-facing text across
             # all iterations of the tool-use loop. Saved to telemetry
@@ -232,16 +361,11 @@ class ModelHarness:
                         if event.type == "content_block_start":
                             block = event.content_block
                             if block.type == "tool_use":
-                                start_event: dict[str, Any] = {
-                                    "type": "tool_use_start",
-                                    "name": block.name,
-                                }
-                                count = _batch_item_count(
-                                    block.name, getattr(block, "input", None)
+                                yield _sse(
+                                    _tool_start_event(
+                                        block.name, getattr(block, "input", None)
+                                    )
                                 )
-                                if count is not None:
-                                    start_event["item_count"] = count
-                                yield _sse(start_event)
                         elif event.type == "content_block_delta":
                             delta = event.delta
                             if delta.type == "text_delta":
@@ -317,19 +441,12 @@ class ModelHarness:
                             )
                         )
 
-                    event: dict[str, Any] = {
-                        "type": "tool_result",
-                        "name": block.name,
-                        "is_error": is_error,
-                    }
                     # Surface the backend's correlation id when the tool
                     # result carries one (lookup_food_nutrition does) —
                     # the frontend can read it off the SSE stream in
                     # devtools and pivot straight into CloudWatch with
                     # `filter request_id = "…"`.
-                    if request_id := _request_id_from_result(text):
-                        event["request_id"] = request_id
-                    yield _sse(event)
+                    yield _sse(_tool_result_event(block.name, text, is_error))
                     tool_results.append(
                         {
                             "type": "tool_result",

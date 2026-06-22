@@ -443,3 +443,224 @@ def test_request_id_absent_or_unparseable_yields_none():
     assert _request_id_from_result("[1, 2, 3]") is None  # not an object
     assert _request_id_from_result("plain text tool result") is None
     assert _request_id_from_result("") is None
+
+
+# --- shared tool-event helpers --------------------------------------------
+#
+# The model loop and the prefetch path both surface tool activity using
+# the same two SSE event shapes, factored into these helpers so the two
+# code paths can't drift.
+
+
+def test_tool_start_event_stamps_batch_item_count():
+    from prog_strength_agent.model_harness import _tool_start_event
+
+    assert _tool_start_event("log_consumption_batch", {"items": [1, 2]}) == {
+        "type": "tool_use_start",
+        "name": "log_consumption_batch",
+        "item_count": 2,
+    }
+
+
+def test_tool_start_event_omits_item_count_for_non_batch():
+    from prog_strength_agent.model_harness import _tool_start_event
+
+    assert _tool_start_event("get_training_snapshot", {"timezone": "UTC"}) == {
+        "type": "tool_use_start",
+        "name": "get_training_snapshot",
+    }
+
+
+def test_tool_result_event_surfaces_request_id_and_error_flag():
+    from prog_strength_agent.model_harness import _tool_result_event
+
+    assert _tool_result_event(
+        "lookup_food_nutrition", '{"request_id": "req-9"}', False
+    ) == {
+        "type": "tool_result",
+        "name": "lookup_food_nutrition",
+        "is_error": False,
+        "request_id": "req-9",
+    }
+    assert _tool_result_event("get_training_snapshot", "boom", True) == {
+        "type": "tool_result",
+        "name": "get_training_snapshot",
+        "is_error": True,
+    }
+
+
+# --- prefetch tool-usage logging ------------------------------------------
+#
+# Intent prefetch tool calls (e.g. analyze_training's get_training_snapshot)
+# run before the model loop. They used to bypass the only paths that report
+# tool usage to the web app — telemetry.tool_calls and the SSE stream — so
+# they were invisible in the UI. _PrefetchToolRecorder captures them and
+# _prefetch_tool_events replays them onto both paths exactly like a
+# model-issued call. These seams are unit-testable without faking the full
+# Anthropic stream loop (same convention as the helpers above).
+
+
+class _FakeContent:
+    def __init__(self, text: str):
+        self.text = text
+
+
+class _FakeToolResult:
+    def __init__(self, content: list, is_error: bool = False):
+        self.content = content
+        self.isError = is_error
+
+
+class _RecordingFakeSession:
+    """Minimal MCP-session stand-in: returns a canned result (or raises)
+    from call_tool and remembers what it was called with."""
+
+    def __init__(self, result=None, raises: Exception | None = None):
+        self.result = result
+        self.raises = raises
+        self.calls: list = []
+        self.extra_attr = "delegated"
+
+    async def call_tool(self, name, arguments=None):
+        self.calls.append((name, arguments))
+        if self.raises is not None:
+            raise self.raises
+        return self.result
+
+
+@pytest.mark.asyncio
+async def test_prefetch_recorder_captures_successful_call():
+    from prog_strength_agent.model_harness import _PrefetchToolRecorder
+
+    inner = _RecordingFakeSession(
+        result=_FakeToolResult([_FakeContent('{"period": {"days": 7}}')])
+    )
+    rec = _PrefetchToolRecorder(inner)
+
+    out = await rec.call_tool("get_training_snapshot", {"timezone": "UTC"})
+
+    assert out is inner.result  # real result still flows back to the prefetch
+    assert inner.calls == [("get_training_snapshot", {"timezone": "UTC"})]
+    assert len(rec.calls) == 1
+    call = rec.calls[0]
+    assert call.record.tool_name == "get_training_snapshot"
+    assert call.is_error is False
+    assert call.record.error is None
+    assert call.arguments == {"timezone": "UTC"}
+    assert '"timezone": "UTC"' in call.record.arguments_json
+    assert call.record.result_summary is not None
+
+
+@pytest.mark.asyncio
+async def test_prefetch_recorder_marks_is_error_result():
+    from prog_strength_agent.model_harness import _PrefetchToolRecorder
+
+    inner = _RecordingFakeSession(
+        result=_FakeToolResult([_FakeContent("snapshot failed")], is_error=True)
+    )
+    rec = _PrefetchToolRecorder(inner)
+
+    await rec.call_tool("get_training_snapshot", {})
+
+    call = rec.calls[0]
+    assert call.is_error is True
+    assert call.record.error == "snapshot failed"
+
+
+@pytest.mark.asyncio
+async def test_prefetch_recorder_records_then_reraises_on_exception():
+    from prog_strength_agent.model_harness import _PrefetchToolRecorder
+
+    inner = _RecordingFakeSession(raises=RuntimeError("mcp down"))
+    rec = _PrefetchToolRecorder(inner)
+
+    with pytest.raises(RuntimeError):
+        await rec.call_tool("get_training_snapshot", {})
+
+    # The attempt is still recorded so a failing fetch is visible in the UI.
+    assert len(rec.calls) == 1
+    assert rec.calls[0].is_error is True
+    assert "mcp down" in rec.calls[0].record.error
+
+
+@pytest.mark.asyncio
+async def test_prefetch_recorder_delegates_other_session_attrs():
+    from prog_strength_agent.model_harness import _PrefetchToolRecorder
+
+    inner = _RecordingFakeSession(result=_FakeToolResult([]))
+    rec = _PrefetchToolRecorder(inner)
+
+    # Anything that isn't call_tool passes straight through to the session.
+    assert rec.extra_attr == "delegated"
+
+
+@pytest.mark.asyncio
+async def test_prefetch_tool_events_records_telemetry_and_emits_sse():
+    import json
+
+    from prog_strength_agent.model_harness import (
+        _prefetch_tool_events,
+        _PrefetchToolRecorder,
+    )
+    from prog_strength_agent.telemetry import TurnInstrumentation
+
+    inner = _RecordingFakeSession(
+        result=_FakeToolResult([_FakeContent('{"request_id": "req-7"}')])
+    )
+    rec = _PrefetchToolRecorder(inner)
+    await rec.call_tool("get_training_snapshot", {"timezone": "UTC"})
+
+    telemetry = TurnInstrumentation.new(user_id="u-1", session_id="s-1")
+    chunks = list(_prefetch_tool_events(rec.calls, telemetry))
+
+    # Persisted path: one ToolCallRecord lands in telemetry.tool_calls.
+    assert len(telemetry.tool_calls) == 1
+    assert telemetry.tool_calls[0].tool_name == "get_training_snapshot"
+
+    # Live path: a tool_use_start then a tool_result, same shapes the model
+    # loop emits.
+    events = [
+        json.loads(c.decode().removeprefix("data: ").strip()) for c in chunks
+    ]
+    assert [e["type"] for e in events] == ["tool_use_start", "tool_result"]
+    assert events[0]["name"] == "get_training_snapshot"
+    assert events[1]["name"] == "get_training_snapshot"
+    assert events[1]["is_error"] is False
+    assert events[1]["request_id"] == "req-7"
+
+
+@pytest.mark.asyncio
+async def test_prefetch_tool_events_tolerates_no_telemetry():
+    from prog_strength_agent.model_harness import (
+        _prefetch_tool_events,
+        _PrefetchToolRecorder,
+    )
+
+    inner = _RecordingFakeSession(result=_FakeToolResult([_FakeContent("{}")]))
+    rec = _PrefetchToolRecorder(inner)
+    await rec.call_tool("get_training_snapshot", {})
+
+    # telemetry=None (untracked turn) must still emit the SSE events.
+    chunks = list(_prefetch_tool_events(rec.calls, None))
+    assert len(chunks) == 2
+
+
+@pytest.mark.asyncio
+async def test_analyze_training_prefetch_call_is_recorded():
+    """End-to-end on the real intent: running analyze_training's prefetch
+    through the recorder captures its get_training_snapshot call — the
+    exact tool that was invisible in the web app before this fix."""
+    from prog_strength_agent.intents import IntentRegistry
+    from prog_strength_agent.model_harness import _PrefetchToolRecorder
+
+    inner = _RecordingFakeSession(
+        result=_FakeToolResult([_FakeContent('{"period": {"days": 7}}')])
+    )
+    rec = _PrefetchToolRecorder(inner)
+
+    _rules, _data, failed = await IntentRegistry.run(
+        "analyze_training", rec, "America/Denver"
+    )
+
+    assert failed is False
+    assert [c.record.tool_name for c in rec.calls] == ["get_training_snapshot"]
