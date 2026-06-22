@@ -1,3 +1,10 @@
+# [0.28.0](https://github.com/Prog-Strength/prog-strength-agent/compare/v0.27.1...v0.28.0) (2026-06-22)
+
+
+### Features
+
+* **agent:** instrument per-request X-Request-ID ([#22](https://github.com/Prog-Strength/prog-strength-agent/issues/22)) ([90bc848](https://github.com/Prog-Strength/prog-strength-agent/commit/90bc848f9d9d09ddd4d6b261148c96835f182278))
+
 ## [0.27.1](https://github.com/Prog-Strength/prog-strength-agent/compare/v0.27.0...v0.27.1) (2026-06-22)
 
 
