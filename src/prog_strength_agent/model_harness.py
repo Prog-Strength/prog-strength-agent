@@ -31,6 +31,7 @@ from mcp.client.streamable_http import streamablehttp_client
 from prog_strength_agent.intents import IntentRegistry
 from prog_strength_agent.memory import format_memory_block
 from prog_strength_agent.prompt import SYSTEM_PROMPT, compose_system_prompt
+from prog_strength_agent.request_id import current_request_id
 from prog_strength_agent.telemetry import (
     MessageRecord,
     ToolCallRecord,
@@ -395,7 +396,9 @@ class ModelHarness:
 
                 if stop_reason != "tool_use":
                     yield _sse(
-                        {"type": "done", "stop_reason": stop_reason or "unknown"}
+                        _with_request_id(
+                            {"type": "done", "stop_reason": stop_reason or "unknown"}
+                        )
                     )
                     completion_reason = stop_reason or "unknown"
                     return
@@ -458,16 +461,18 @@ class ModelHarness:
                 messages.append({"role": "user", "content": tool_results})
 
             yield _sse(
-                {
-                    "type": "error",
-                    "message": f"exceeded tool-use loop limit ({MAX_TOOL_LOOP})",
-                }
+                _with_request_id(
+                    {
+                        "type": "error",
+                        "message": f"exceeded tool-use loop limit ({MAX_TOOL_LOOP})",
+                    }
+                )
             )
             completion_reason = "error"
             completion_error = f"exceeded tool-use loop limit ({MAX_TOOL_LOOP})"
         except Exception as exc:
             log.exception("chat stream failed (model=%s)", self.model)
-            yield _sse({"type": "error", "message": f"agent error: {exc}"})
+            yield _sse(_with_request_id({"type": "error", "message": f"agent error: {exc}"}))
             completion_reason = "error"
             completion_error = str(exc)
         finally:
@@ -504,6 +509,18 @@ def _request_id_from_result(text: str) -> str | None:
         if isinstance(request_id, str) and request_id:
             return request_id
     return None
+
+
+def _with_request_id(event: dict[str, Any]) -> dict[str, Any]:
+    """Stamp the agent's per-request correlation id onto a terminal SSE
+    event (done/error) so the client can pivot from a finished stream
+    straight into the agent's logs. Omitted outside a request context
+    (e.g. unit tests driving the harness directly), matching the API
+    envelope's omitempty semantics. Distinct from the `request_id` on
+    `tool_result` events, which carries the downstream API's id."""
+    if rid := current_request_id():
+        event["request_id"] = rid
+    return event
 
 
 def _sse(payload: dict[str, Any]) -> bytes:

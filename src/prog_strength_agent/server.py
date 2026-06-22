@@ -24,10 +24,13 @@ from typing import Any
 
 from anthropic import AsyncAnthropic
 from fastapi import FastAPI, Request
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import Response, StreamingResponse
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 from prometheus_fastapi_instrumentator import Instrumentator
 from pydantic import BaseModel
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from prog_strength_agent.api_client import APIClient
 from prog_strength_agent.auth import authenticate
@@ -35,6 +38,11 @@ from prog_strength_agent.config import Config
 from prog_strength_agent.model_harness import ModelHarness
 from prog_strength_agent.model_router import ModelRouter
 from prog_strength_agent.prompt import build_chat_system_prompt
+from prog_strength_agent.request_id import (
+    RequestIDMiddleware,
+    configure_logging,
+    current_request_id,
+)
 from prog_strength_agent.speak import SpeakError, TTSGenerator
 from prog_strength_agent.telemetry import (
     AGENT_VOICE_TIME_TO_FIRST_AUDIO_SECONDS,
@@ -48,6 +56,11 @@ from prog_strength_agent.version import SERVICE, VERSION
 from prog_strength_agent.voice_stream import voice_streamer
 
 log = logging.getLogger(__name__)
+
+# Install the request-id-aware log formatter before anything logs, so
+# every line the agent emits carries the request's correlation id (or
+# "-" when logged outside a request). See request_id.configure_logging.
+configure_logging()
 
 # Single shared state. uvicorn's worker process is long-lived; these
 # get constructed once at import time and reused for the lifetime of
@@ -152,15 +165,59 @@ if config.cors_allowed_origins:
         allow_credentials=False,
         allow_methods=["GET", "POST", "OPTIONS"],
         allow_headers=["Authorization", "Content-Type", "Accept"],
+        # Let browsers read the correlation id off cross-origin responses
+        # so the frontend can log it / attach it to support reports.
+        expose_headers=["X-Request-ID"],
+    )
+
+# Added LAST so it sits OUTERMOST in the middleware stack: the request id
+# is minted before any handler (and before CORS short-circuits a
+# preflight) and the X-Request-ID header is stamped on every response.
+app.add_middleware(RequestIDMiddleware)
+
+
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_handler(
+    request: Request, exc: StarletteHTTPException
+) -> JSONResponse:
+    """Mirror FastAPI's default HTTPException body ({"detail": ...}) but
+    add the request id so a client (or its logs) can correlate a 4xx/5xx
+    with the agent's logs. Preserves any headers the exception carries
+    (e.g. the WWW-Authenticate on a 401)."""
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.detail, "request_id": current_request_id()},
+        headers=getattr(exc, "headers", None),
+    )
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(
+    request: Request, exc: RequestValidationError
+) -> JSONResponse:
+    """422 body mirrors FastAPI's default ({"detail": [...]}) plus the
+    request id, for the same correlation reason as above."""
+    return JSONResponse(
+        status_code=422,
+        content={
+            "detail": jsonable_encoder(exc.errors()),
+            "request_id": current_request_id(),
+        },
     )
 
 
 @app.get("/health")
 async def health() -> dict[str, str]:
     """Liveness probe. Mirrors the API and MCP `/health` envelope shape
-    so the same curl muscle memory works across all three services.
+    (now including request_id) so the same curl muscle memory works
+    across all three services.
     """
-    return {"service": SERVICE, "version": VERSION, "message": "service is healthy"}
+    return {
+        "service": SERVICE,
+        "version": VERSION,
+        "request_id": current_request_id(),
+        "message": "service is healthy",
+    }
 
 
 class ChatMessage(BaseModel):
