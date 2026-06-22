@@ -28,7 +28,7 @@ def test_known_intents_enum():
         "log_workout",
         "log_bodyweight",
         "log_daily_steps",
-        "analyze_progress",
+        "analyze_training",
         "plan_workout",
         "general",
     }
@@ -160,28 +160,51 @@ async def test_log_daily_steps_prefetch_calls_get_steps_with_since_window():
 
 
 @pytest.mark.asyncio
-async def test_analyze_progress_prefetch_includes_workouts_and_macros():
+async def test_analyze_training_prefetch_calls_snapshot_for_current_week():
     from typing import Any
+
     captured: dict[str, Any] = {}
 
     class _CaptureSession:
         async def call_tool(self, name: str, args: dict):
             captured[name] = args
-            return _FakeMCPResult({
-                "list_workouts": '[' + ','.join(
-                    f'{{"id":"w-{i}","performed_at":"2026-05-{(i%28)+1:02d}T18:00:00Z","exercises":[]}}'
-                    for i in range(1, 25)
-                ) + ']',
-                "get_daily_macros": '[{"date":"2026-05-30","calories":2200,"protein_g":180,"fat_g":70,"carbs_g":230}]',
-            }[name])
+            return _FakeMCPResult(
+                '{"period":{"start_date":"2026-06-15","end_date":"2026-06-21",'
+                '"timezone":"America/Denver","days":7},'
+                '"strength":{"session_count":3,"total_volume":48250,"unit":"lb",'
+                '"by_muscle_group":[],"sessions":[],"headline_prs":["335 lb squat PR"]},'
+                '"running":null,"steps":{"days_logged":6,"avg":9120,"total":54720,"goal":10000,"by_day":[]},'
+                '"bodyweight":null,"nutrition":null,"consistency":{"active_days":5,"window_days":7}}'
+            )
 
-    rules, data, _failed = await IntentRegistry.run("analyze_progress", _CaptureSession())
-    assert "favor citing" in rules.lower() or "already have a recent window" in rules.lower()
-    # Workouts capped to 20
-    assert data.count("w-") <= 20
-    assert "2200" in data
-    assert captured.get("get_daily_macros", {}).get("since") is not None
-    assert captured.get("get_daily_macros", {}).get("until") is not None
+    rules, data, failed = await IntentRegistry.run(
+        "analyze_training", _CaptureSession(), "America/Denver"
+    )
+    assert failed is False
+    assert "get_training_snapshot" in captured
+    assert captured["get_training_snapshot"]["timezone"] == "America/Denver"
+    # current local week = 7-day window ending today
+    assert captured["get_training_snapshot"]["start_date"] is not None
+    assert captured["get_training_snapshot"]["end_date"] is not None
+    # format renders compact specifics from the snapshot
+    assert "48250" in data or "335 lb squat PR" in data
+    assert "9120" in data  # steps avg present
+
+
+@pytest.mark.asyncio
+async def test_analyze_training_prefetch_fails_soft_without_timezone_ok():
+    # When timezone is None, the prefetch still produces a snapshot call
+    # using a UTC fallback rather than raising.
+    captured = {}
+
+    class _S:
+        async def call_tool(self, name, args):
+            captured[name] = args
+            return _FakeMCPResult("{}")
+
+    rules, data, failed = await IntentRegistry.run("analyze_training", _S(), None)
+    assert "get_training_snapshot" in captured
+    assert captured["get_training_snapshot"]["timezone"] == "UTC"
 
 
 @pytest.mark.asyncio

@@ -40,7 +40,7 @@ def test_compose_non_empty_background_appended_last():
 
 @pytest.mark.asyncio
 async def test_build_intent_aware_prompt_includes_background(monkeypatch):
-    async def fake_run(cls, intent, session):
+    async def fake_run(cls, intent, session, client_timezone=None):
         return "RULES", "DATA", False
 
     monkeypatch.setattr(IntentRegistry, "run", classmethod(fake_run))
@@ -57,7 +57,7 @@ async def test_build_intent_aware_prompt_includes_background(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_build_intent_aware_prompt_empty_memories_byte_for_byte(monkeypatch):
-    async def fake_run(cls, intent, session):
+    async def fake_run(cls, intent, session, client_timezone=None):
         return "RULES", "DATA", False
 
     monkeypatch.setattr(IntentRegistry, "run", classmethod(fake_run))
