@@ -92,7 +92,7 @@ async def test_route_populates_intent_on_telemetry():
 
     client = SimpleNamespace(
         messages=SimpleNamespace(
-            create=AsyncMock(return_value=_resp([_tool_use_block("complex", "analyze_progress")]))
+            create=AsyncMock(return_value=_resp([_tool_use_block("complex", "analyze_training")]))
         )
     )
     router = ModelRouter(client=client, router_model="claude-haiku-4-5-20251001")
@@ -100,7 +100,25 @@ async def test_route_populates_intent_on_telemetry():
 
     await router.route(messages=[{"role": "user", "content": "how is my bench progressing?"}], telemetry=t)
     assert t.routed_tier == "complex"
-    assert t.intent == "analyze_progress"
+    assert t.intent == "analyze_training"
+
+
+@pytest.mark.asyncio
+async def test_analyze_training_is_forced_complex_even_if_model_says_simple():
+    client = SimpleNamespace(
+        messages=SimpleNamespace(
+            create=AsyncMock(return_value=_resp([_tool_use_block("simple", "analyze_training")]))
+        )
+    )
+    router = ModelRouter(client=client, router_model="claude-haiku-4-5-20251001")
+    from prog_strength_agent.telemetry import TurnInstrumentation
+    t = TurnInstrumentation.new(user_id="u-1", session_id=None)
+    decision = await router.route(
+        messages=[{"role": "user", "content": "how did my training go this week?"}], telemetry=t
+    )
+    assert decision.tier == "complex"
+    assert decision.intent == "analyze_training"
+    assert t.routed_tier == "complex"
 
 
 def test_router_prompt_routes_external_meal_estimation_to_complex():

@@ -17,10 +17,11 @@ from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
+from zoneinfo import ZoneInfo
 
 log = logging.getLogger(__name__)
 
-PrefetchFn = Callable[[Any], Awaitable[dict[str, Any]]]
+PrefetchFn = Callable[[Any, str | None], Awaitable[dict[str, Any]]]
 FormatFn = Callable[[dict[str, Any]], str]
 
 KNOWN_INTENTS: tuple[str, ...] = (
@@ -28,7 +29,7 @@ KNOWN_INTENTS: tuple[str, ...] = (
     "log_workout",
     "log_bodyweight",
     "log_daily_steps",
-    "analyze_progress",
+    "analyze_training",
     "plan_workout",
     "general",
 )
@@ -49,7 +50,7 @@ def _register(spec: IntentSpec) -> None:
     _SPECS[spec.intent] = spec
 
 
-async def _noop_prefetch(_session: Any) -> dict[str, Any]:
+async def _noop_prefetch(_session: Any, _timezone: str | None) -> dict[str, Any]:
     return {}
 
 
@@ -87,7 +88,7 @@ def _decode_tool_result(result: Any) -> Any:
         return []
 
 
-async def _log_nutrition_prefetch(session: Any) -> dict[str, Any]:
+async def _log_nutrition_prefetch(session: Any, _timezone: str | None) -> dict[str, Any]:
     pantry_task = session.call_tool("list_pantry_items", {})
     recipes_task = session.call_tool("list_recipes", {})
     pantry_res, recipes_res = await asyncio.gather(pantry_task, recipes_task)
@@ -146,7 +147,7 @@ _register(IntentSpec(
 ))
 
 
-async def _log_workout_prefetch(session: Any) -> dict[str, Any]:
+async def _log_workout_prefetch(session: Any, _timezone: str | None) -> dict[str, Any]:
     catalog_task = session.call_tool("list_exercises", {})
     workouts_task = session.call_tool("list_workouts", {})
     catalog_res, workouts_res = await asyncio.gather(catalog_task, workouts_task)
@@ -198,7 +199,7 @@ _register(IntentSpec(
 ))
 
 
-async def _plan_workout_prefetch(session: Any) -> dict[str, Any]:
+async def _plan_workout_prefetch(session: Any, _timezone: str | None) -> dict[str, Any]:
     catalog_task = session.call_tool("list_exercises", {})
     workouts_task = session.call_tool("list_workouts", {})
     catalog_res, workouts_res = await asyncio.gather(catalog_task, workouts_task)
@@ -251,7 +252,7 @@ _register(IntentSpec(
 ))
 
 
-async def _log_bodyweight_prefetch(session: Any) -> dict[str, Any]:
+async def _log_bodyweight_prefetch(session: Any, _timezone: str | None) -> dict[str, Any]:
     since = (datetime.now(UTC) - timedelta(days=14)).isoformat().replace("+00:00", "Z")
     res = await session.call_tool("list_bodyweight", {"since": since})
     return {"entries": _decode_tool_result(res)}
@@ -286,7 +287,7 @@ _register(IntentSpec(
 ))
 
 
-async def _log_daily_steps_prefetch(session: Any) -> dict[str, Any]:
+async def _log_daily_steps_prefetch(session: Any, _timezone: str | None) -> dict[str, Any]:
     since = (datetime.now(UTC) - timedelta(days=14)).date().isoformat()
     res = await session.call_tool("get_steps", {"since": since})
     decoded = _decode_tool_result(res)
@@ -330,53 +331,106 @@ _register(IntentSpec(
 ))
 
 
-async def _analyze_progress_prefetch(session: Any) -> dict[str, Any]:
-    now = datetime.now(UTC)
-    since = (now - timedelta(days=30)).isoformat().replace("+00:00", "Z")
-    until = now.isoformat().replace("+00:00", "Z")
-    workouts_task = session.call_tool("list_workouts", {})
-    macros_task = session.call_tool("get_daily_macros", {"since": since, "until": until})
-    workouts_res, macros_res = await asyncio.gather(workouts_task, macros_task)
-    workouts = _decode_tool_result(workouts_res)
-    # API returns ~50 most-recent newest-first; take the first 20 for prompt size.
-    return {
-        "workouts": workouts[:20],
-        "daily_macros": _decode_tool_result(macros_res),
-    }
+async def _analyze_training_prefetch(session: Any, timezone: str | None) -> dict[str, Any]:
+    tz_name = timezone or "UTC"
+    try:
+        tz = ZoneInfo(tz_name)
+    except Exception:  # noqa: BLE001 — unknown tz falls back to UTC
+        tz_name, tz = "UTC", ZoneInfo("UTC")
+    today = datetime.now(tz).date()
+    start = today - timedelta(days=6)
+    res = await session.call_tool(
+        "get_training_snapshot",
+        {"timezone": tz_name, "start_date": start.isoformat(), "end_date": today.isoformat()},
+    )
+    snap = _decode_tool_result(res)
+    return {"snapshot": snap if isinstance(snap, dict) else {}}
 
 
-def _analyze_progress_format(data: dict[str, Any]) -> str:
-    lines = ["RECENT WORKOUTS (last 20, most recent first):"]
-    for w in data.get("workouts", []):
+def _analyze_training_format(data: dict[str, Any]) -> str:
+    snap = data.get("snapshot") or {}
+    if not isinstance(snap, dict) or not snap:
+        return "TRAINING SNAPSHOT: (unavailable)"
+    lines: list[str] = ["TRAINING SNAPSHOT (pre-aggregated for the period):"]
+    period = snap.get("period") or {}
+    lines.append(
+        f"- period: {period.get('start_date', '?')} → {period.get('end_date', '?')} "
+        f"({period.get('days', '?')} days, {period.get('timezone', '?')})"
+    )
+    cons = snap.get("consistency") or {}
+    lines.append(f"- active days: {cons.get('active_days', '?')}/{cons.get('window_days', '?')}")
+
+    strength = snap.get("strength")
+    if strength is None:
+        lines.append("- strength: unavailable")
+    else:
         lines.append(
-            f"- {w.get('id', '?')} · "
-            f"{w.get('performed_at', '?')} · "
-            f"{len(w.get('exercises') or [])} exercise(s)"
+            f"- strength: {strength.get('session_count', 0)} session(s), "
+            f"volume {strength.get('total_volume', 0)} {strength.get('unit', '')}"
         )
-    lines.append("")
-    lines.append("DAILY MACROS (last 30 days; date · kcal · P/F/C):")
-    for d in data.get("daily_macros", []):
+        for pr in strength.get("headline_prs") or []:
+            lines.append(f"  - PR: {pr}")
+
+    running = snap.get("running")
+    if running is None:
+        lines.append("- running: unavailable")
+    else:
         lines.append(
-            f"- {d.get('date', '?')} · "
-            f"{d.get('calories', 0)} kcal · "
-            f"{d.get('protein_g', 0)}/{d.get('fat_g', 0)}/{d.get('carbs_g', 0)}"
+            f"- running: {running.get('run_count', 0)} run(s), "
+            f"{running.get('total_distance_m', 0)} m, {running.get('total_duration_s', 0)} s"
+        )
+
+    steps = snap.get("steps")
+    if steps is None:
+        lines.append("- steps: unavailable")
+    else:
+        lines.append(
+            f"- steps: avg {steps.get('avg', 0)} over {steps.get('days_logged', 0)} day(s), "
+            f"goal {steps.get('goal', 0)}"
+        )
+
+    bodyweight = snap.get("bodyweight")
+    if bodyweight is None:
+        lines.append("- bodyweight: unavailable")
+    else:
+        lines.append(
+            f"- bodyweight: {bodyweight.get('start', '?')} → {bodyweight.get('end', '?')} "
+            f"{bodyweight.get('unit', '')} (delta {bodyweight.get('delta', '?')})"
+        )
+
+    nutrition = snap.get("nutrition")
+    if nutrition is None:
+        lines.append("- nutrition: unavailable")
+    else:
+        avg = nutrition.get("avg") or {}
+        goals = nutrition.get("goals") or {}
+        lines.append(
+            f"- nutrition: {nutrition.get('days_logged', 0)} day(s) logged; "
+            f"avg {avg.get('calories', 0)} kcal P/F/C "
+            f"{avg.get('protein_g', 0)}/{avg.get('fat_g', 0)}/{avg.get('carbs_g', 0)}; "
+            f"goal {goals.get('calories', 0)} kcal"
         )
     return "\n".join(lines)
 
 
-_ANALYZE_PROGRESS_RULES = """\
-The user wants analysis or planning advice. You already have a recent \
-window of workouts and macros below. Favor citing specifics from this \
-data over calling more tools; only fetch more if the user asks about \
-a time range outside the included window.\
+_ANALYZE_TRAINING_RULES = """\
+The user wants a holistic read on their training over a period. A pre-aggregated \
+TRAINING SNAPSHOT across strength, running, steps, bodyweight, and nutrition is \
+below. Give a read across ALL modalities present in the snapshot, not just \
+lifting. Cite specifics from the snapshot (volumes, paces, averages, deltas, \
+active days) rather than generalizing. Use remembered goals, constraints, and \
+injuries from the Background block when relevant. If the user asked about a \
+period other than the prefetched week (e.g. "last month"), call \
+get_training_snapshot again with explicit start_date/end_date. Reach for the \
+per-domain detail tools only when you need more than the snapshot carries. Never \
+fabricate data for a domain the snapshot reports as empty or unavailable.\
 """
 
-
 _register(IntentSpec(
-    intent="analyze_progress",
-    rules=_ANALYZE_PROGRESS_RULES,
-    prefetch=_analyze_progress_prefetch,
-    format=_analyze_progress_format,
+    intent="analyze_training",
+    rules=_ANALYZE_TRAINING_RULES,
+    prefetch=_analyze_training_prefetch,
+    format=_analyze_training_format,
 ))
 
 
@@ -390,7 +444,9 @@ class IntentRegistry:
         return KNOWN_INTENTS
 
     @classmethod
-    async def run(cls, intent: str, session: Any) -> tuple[str, str, bool]:
+    async def run(
+        cls, intent: str, session: Any, client_timezone: str | None = None
+    ) -> tuple[str, str, bool]:
         """Run the intent's prefetch and return (rules_block, data_block, failed).
 
         `failed` is True when prefetch (or formatting) raised. The harness
@@ -405,7 +461,7 @@ class IntentRegistry:
         if spec is None:
             return "", "", False
         try:
-            data = await spec.prefetch(session)
+            data = await spec.prefetch(session, client_timezone)
         except Exception:  # noqa: BLE001 — broad by design
             log.exception("intent prefetch failed: intent=%s", intent)
             return spec.rules, "", True

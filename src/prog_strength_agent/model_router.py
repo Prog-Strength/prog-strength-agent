@@ -53,8 +53,9 @@ the classify_request tool.
 tier:
 - simple — CRUD or lookup (logging a workout, listing exercises).
 - complex — multi-step analysis, planning, trend reasoning. ALSO pick
-  complex when (a) the intent is plan_workout — composing a week of
-  training is multi-step — or (b) the user is logging food from a
+  complex when (a) the intent is plan_workout or analyze_training —
+  composing or reviewing a block of training is multi-step — or (b)
+  the user is logging food from a
   restaurant or other external source (a chain name, "from <place>",
   ordered/bought/picked-up wording): when no database match exists those macros are
   estimated from model knowledge, which needs the stronger model.
@@ -64,7 +65,10 @@ intent:
 - log_workout — the user is reporting a completed workout.
 - log_bodyweight — the user is logging a bodyweight reading.
 - log_daily_steps — the user is logging a daily step count.
-- analyze_progress — the user wants insight, trends, or planning advice.
+- analyze_training — the user wants to assess, review, or reflect on
+  their training over a period ("how did I do this week?", "how's my
+  training going", "review my month"). Always routes to the complex
+  tier.
 - plan_workout — the user wants to schedule/plan FUTURE workouts
   ("plan my week", "set up next week's training", "schedule my
   upper/lower split").
@@ -73,6 +77,12 @@ intent:
 When uncertain on intent, pick "general". When uncertain on tier,
 pick "simple". Both err on the side of cheap and safe.
 """
+
+
+# Intents that must always run on the complex tier regardless of what the
+# router model returns — period analysis and planning are inherently
+# multi-step and deserve the stronger model.
+_ALWAYS_COMPLEX = {"plan_workout", "analyze_training"}
 
 
 _FALLBACK = RouterDecision(tier="simple", intent="general")
@@ -142,6 +152,8 @@ def _parse_decision(resp: Any) -> RouterDecision:
             return _FALLBACK
         if intent not in KNOWN_INTENTS:
             return _FALLBACK
+        if intent in _ALWAYS_COMPLEX:
+            tier = "complex"
         return RouterDecision(tier=tier, intent=intent)
     return _FALLBACK
 

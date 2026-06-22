@@ -46,6 +46,7 @@ async def build_intent_aware_prompt(
     base: str,
     intent: str,
     session: Any,
+    client_timezone: str | None = None,
     memories: list[str] | None = None,
 ) -> tuple[str, bool]:
     """Compose the per-turn system prompt and return it alongside the
@@ -57,7 +58,7 @@ async def build_intent_aware_prompt(
     block. Empty/None memories render to "" so the composed prompt is
     byte-for-byte identical to a turn with memory disabled.
     """
-    rules, data, failed = await IntentRegistry.run(intent, session)
+    rules, data, failed = await IntentRegistry.run(intent, session, client_timezone)
     background = format_memory_block(memories or [])
     return (
         compose_system_prompt(
@@ -73,10 +74,11 @@ async def build_intent_aware_prompt(
 # follow-ups.
 MAX_TOOL_LOOP = 8
 
-# Nutrition tools that accept a `timezone` arg for day-boundary math.
-# The harness auto-injects the user's client_timezone into these calls
-# so the model never has to thread it through itself.
-_NUTRITION_TZ_TOOLS = {"list_nutrition_log", "get_daily_macros"}
+# Tools that accept a `timezone` arg for day-boundary math (nutrition
+# day rollups and the training snapshot's local week). The harness
+# auto-injects the user's client_timezone into these calls so the model
+# never has to thread it through itself.
+_TZ_AWARE_TOOLS = {"list_nutrition_log", "get_daily_macros", "get_training_snapshot"}
 
 
 def _batch_item_count(name: str, block_input: Any) -> int | None:
@@ -107,7 +109,7 @@ def _maybe_inject_timezone(
     downstream API fast-fails with a 400 rather than silently guessing.
     """
     result = dict(tool_input)
-    if name in _NUTRITION_TZ_TOOLS and "timezone" not in result and client_timezone:
+    if name in _TZ_AWARE_TOOLS and "timezone" not in result and client_timezone:
         result["timezone"] = client_timezone
     return result
 
@@ -198,6 +200,7 @@ class ModelHarness:
                 base=system_prompt or SYSTEM_PROMPT,
                 intent=intent,
                 session=session,
+                client_timezone=client_timezone,
                 memories=memories,
             )
             if telemetry is not None:

@@ -26,7 +26,7 @@ async def test_harness_uses_intent_registry_to_compose_prompt(monkeypatch):
     from prog_strength_agent import model_harness as mh
     from prog_strength_agent.intents import IntentRegistry
 
-    async def fake_run(cls, intent, session):
+    async def fake_run(cls, intent, session, client_timezone=None):
         return "RULES_BLOCK", "DATA_BLOCK", False
 
     monkeypatch.setattr(IntentRegistry, "run", classmethod(fake_run))
