@@ -1,3 +1,10 @@
+# [0.29.0](https://github.com/Prog-Strength/prog-strength-agent/compare/v0.28.0...v0.29.0) (2026-06-23)
+
+
+### Features
+
+* **deploy:** deploy via SSM Run Command; retire SSH deploy key ([#21](https://github.com/Prog-Strength/prog-strength-agent/issues/21)) ([1deb69c](https://github.com/Prog-Strength/prog-strength-agent/commit/1deb69c93cfdce395f8d9766764f39c3cd8e29d3))
+
 # [0.28.0](https://github.com/Prog-Strength/prog-strength-agent/compare/v0.27.1...v0.28.0) (2026-06-22)
 
 
