@@ -89,3 +89,8 @@ Deployed on the same EC2 host as the API and MCP. The docker-compose
 service joins the shared `prog-strength` external network so it can
 resolve `mcp` and `api` by service name. Caddy reverse-proxies
 `agent.progstrength.fitness` → `agent:8001`.
+
+Deploys run through SSM Run Command (invoking
+`prog-strength-infra/deploy/agent.sh`) rather than SSH, with the app's
+runtime secrets read from AWS Secrets Manager via the host's instance
+role.
