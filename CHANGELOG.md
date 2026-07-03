@@ -1,3 +1,10 @@
+# [0.30.0](https://github.com/Prog-Strength/prog-strength-agent/compare/v0.29.0...v0.30.0) (2026-07-03)
+
+
+### Features
+
+* **agent:** document treadmill tag + distance calibration tools ([#23](https://github.com/Prog-Strength/prog-strength-agent/issues/23)) ([4e3c950](https://github.com/Prog-Strength/prog-strength-agent/commit/4e3c950c35a52f463a183ecfbe502137bd4704db))
+
 # [0.29.0](https://github.com/Prog-Strength/prog-strength-agent/compare/v0.28.0...v0.29.0) (2026-06-23)
 
 
