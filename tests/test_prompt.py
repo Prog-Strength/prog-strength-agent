@@ -182,6 +182,35 @@ def test_planned_workouts_survive_date_prefix():
     assert "Planning ahead" in out
 
 
+def test_system_prompt_covers_treadmill_calibration():
+    """The treadmill guidance must name both MCP tools, spell out the
+    indoor-first ordering, and state that treadmill runs are excluded from
+    PRs / best-efforts. Lives in the base prompt so the model has it
+    regardless of intent classification. See
+    prog-strength-docs/sows/treadmill-run-calibration.md."""
+    assert "set_run_environment" in SYSTEM_PROMPT
+    assert "calibrate_run_distance" in SYSTEM_PROMPT
+    # Indoor/treadmill framing and the PR-exclusion rule.
+    assert "treadmill" in SYSTEM_PROMPT.lower()
+    assert "indoor" in SYSTEM_PROMPT
+    assert "excluded from running PRs" in SYSTEM_PROMPT
+    # Only indoor runs can be calibrated (tag indoor first).
+    assert "Only indoor runs can be calibrated" in SYSTEM_PROMPT
+
+
+def test_treadmill_calibration_survives_date_prefix():
+    """The treadmill guidance is still present after the per-request date
+    prefix is prepended (it lives in the base, not the prefix)."""
+    out = build_chat_system_prompt(
+        "UTC", now=datetime(2026, 5, 31, 12, 0, tzinfo=ZoneInfo("UTC"))
+    )
+    assert "set_run_environment" in out
+    assert "calibrate_run_distance" in out
+    assert "treadmill" in out.lower()
+    assert "indoor" in out
+    assert "calibrate" in out
+
+
 def test_compose_system_prompt_omits_empty_sections():
     from prog_strength_agent.prompt import compose_system_prompt
     assert compose_system_prompt(base="BASE", rules="", data="") == "BASE"
