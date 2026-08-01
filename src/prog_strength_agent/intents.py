@@ -28,6 +28,7 @@ KNOWN_INTENTS: tuple[str, ...] = (
     "log_nutrition",
     "log_workout",
     "log_bodyweight",
+    "log_blood_pressure",
     "log_daily_steps",
     "analyze_training",
     "plan_workout",
@@ -284,6 +285,52 @@ _register(IntentSpec(
     rules=_LOG_BODYWEIGHT_RULES,
     prefetch=_log_bodyweight_prefetch,
     format=_log_bodyweight_format,
+))
+
+
+async def _log_blood_pressure_prefetch(session: Any, _timezone: str | None) -> dict[str, Any]:
+    since = (datetime.now(UTC) - timedelta(days=14)).isoformat().replace("+00:00", "Z")
+    res = await session.call_tool("list_blood_pressure", {"since": since})
+    return {"entries": _decode_tool_result(res)}
+
+
+def _log_blood_pressure_format(data: dict[str, Any]) -> str:
+    entries = data.get("entries") or []
+    if not entries:
+        return "RECENT BLOOD PRESSURE (last 14 days): (no entries yet)"
+    lines = ["RECENT BLOOD PRESSURE (last 14 days, most recent first):"]
+    for e in entries:
+        pulse = e.get("pulse")
+        pulse_str = f" · pulse {pulse}" if pulse else ""
+        lines.append(
+            f"- {e.get('measured_at', '?')} · "
+            f"{e.get('systolic', '?')}/{e.get('diastolic', '?')} "
+            f"({e.get('category', '?')}){pulse_str}"
+        )
+    return "\n".join(lines)
+
+
+_LOG_BLOOD_PRESSURE_RULES = """\
+The user is logging a blood-pressure reading. The first/larger number they \
+say is systolic, the second/smaller is diastolic (e.g. "122 over 78" is \
+systolic 122, diastolic 78). If the phrasing was relative ("this morning"), \
+confirm the resolved timestamp back to them. State the reading's category as \
+a plain fact only when it is outside the normal range, and reference the \
+recent trend only when the new reading is a meaningful departure from it.
+
+Safety, non-negotiable: do NOT diagnose, do NOT interpret a reading as a \
+medical condition, and NEVER discuss medication — dosage, timing, starting, \
+or stopping. On a crisis-range reading, state the classification factually \
+and suggest contacting a clinician; do not escalate, alarm, or speculate \
+about the cause. Report numbers and their published classification only.\
+"""
+
+
+_register(IntentSpec(
+    intent="log_blood_pressure",
+    rules=_LOG_BLOOD_PRESSURE_RULES,
+    prefetch=_log_blood_pressure_prefetch,
+    format=_log_blood_pressure_format,
 ))
 
 

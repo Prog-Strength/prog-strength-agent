@@ -64,6 +64,8 @@ intent:
 - log_nutrition — the user wants to record food/drink they consumed.
 - log_workout — the user is reporting a completed workout.
 - log_bodyweight — the user is logging a bodyweight reading.
+- log_blood_pressure — the user is logging a blood-pressure reading
+  (e.g. "122 over 78", "my BP is 130/85").
 - log_daily_steps — the user is logging a daily step count.
 - analyze_training — the user wants to assess, review, or reflect on
   their training over a period ("how did I do this week?", "how's my
