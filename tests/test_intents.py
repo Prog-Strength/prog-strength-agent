@@ -27,6 +27,7 @@ def test_known_intents_enum():
         "log_nutrition",
         "log_workout",
         "log_bodyweight",
+        "log_blood_pressure",
         "log_daily_steps",
         "analyze_training",
         "plan_workout",
@@ -137,6 +138,44 @@ async def test_log_bodyweight_prefetch_calls_list_with_14_day_window(monkeypatch
     assert "bodyweight" in rules.lower()
     assert "205.4" in data
     assert captured_args.get("list_bodyweight", {}).get("since") is not None
+
+
+@pytest.mark.asyncio
+async def test_log_blood_pressure_prefetch_calls_list_with_14_day_window():
+    from typing import Any
+    captured_args: dict[str, Any] = {}
+
+    class _CaptureSession:
+        async def call_tool(self, name: str, args: dict):
+            captured_args[name] = args
+            return _FakeMCPResult(
+                '[{"id":"bp-1","systolic":122,"diastolic":78,"category":"elevated",'
+                '"pulse":61,"measured_at":"2026-08-01T13:00:00Z"}]'
+            )
+
+    rules, data, _failed = await IntentRegistry.run("log_blood_pressure", _CaptureSession())
+    assert "blood" in rules.lower()
+    assert "medication" in rules.lower()
+    assert "122/78" in data
+    assert captured_args.get("list_blood_pressure", {}).get("since") is not None
+
+
+def test_log_blood_pressure_format_empty():
+    from prog_strength_agent.intents import _log_blood_pressure_format
+    assert _log_blood_pressure_format({"entries": []}) == (
+        "RECENT BLOOD PRESSURE (last 14 days): (no entries yet)"
+    )
+
+
+def test_log_blood_pressure_format_populated():
+    from prog_strength_agent.intents import _log_blood_pressure_format
+    out = _log_blood_pressure_format({"entries": [
+        {"measured_at": "2026-08-01T13:00:00Z", "systolic": 122, "diastolic": 78,
+         "category": "elevated", "pulse": 61},
+    ]})
+    assert "122/78" in out
+    assert "(elevated)" in out
+    assert "pulse 61" in out
 
 
 @pytest.mark.asyncio
