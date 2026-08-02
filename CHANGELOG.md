@@ -1,3 +1,10 @@
+# [0.31.0](https://github.com/Prog-Strength/prog-strength-agent/compare/v0.30.0...v0.31.0) (2026-08-02)
+
+
+### Features
+
+* **agent:** add log_blood_pressure intent with safety rules ([#25](https://github.com/Prog-Strength/prog-strength-agent/issues/25)) ([958afe0](https://github.com/Prog-Strength/prog-strength-agent/commit/958afe0f87f0c574f63837949c0576d5db0b45c1))
+
 # [0.30.0](https://github.com/Prog-Strength/prog-strength-agent/compare/v0.29.0...v0.30.0) (2026-07-03)
 
 
