@@ -269,3 +269,73 @@ async def test_run_returns_failed_false_on_happy_path():
 async def test_run_returns_failed_false_for_general_intent():
     rules, data, failed = await IntentRegistry.run("general", session=None)
     assert rules == "" and data == "" and failed is False
+
+
+@pytest.mark.asyncio
+async def test_plan_workout_rules_carry_weather_guidance():
+    """The opinion about running weather lives in this rules string and
+    nowhere else in the system (the MCP tool is plumbing, the API decides
+    nothing about "too hot"). Assert on the substance, not the word
+    "weather" — each block below is one of the SOW's prompt-rule bullets.
+
+    Every assertion pins a distinctive phrase rather than a bare keyword.
+    Short tokens pass vacuously against the pre-existing paragraph — "wind"
+    matches "RFC3339 windows", "day" matches "training day", "date" matches
+    "dated" — so gutting a whole paragraph would still have gone green.
+    """
+    session = _FakeSession({"list_exercises": "[]", "list_workouts": "[]"})
+    rules, _data, _failed = await IntentRegistry.run("plan_workout", session)
+    lower = rules.lower()
+
+    # The pre-existing planning guidance survives alongside the new block.
+    assert "create_planned_workout" in rules
+
+    # Bullet 1: call the tool for outdoor sessions, not indoor ones.
+    assert "call get_weather_forecast when" in lower
+    assert "happens outdoors" in lower
+    assert "running, cycling, hiking" in lower
+    assert "do not call it for indoor lifting" in lower
+
+    # Bullet 2: which signals matter and why.
+    assert "heat and humidity" in lower
+    assert "wind costs pace into a headwind" in lower
+    assert "precip_chance speaks to safety and footing" in rules
+    assert "sunrise and sunset bound" in lower
+
+    # Bullet 3: the ~20-hour hourly horizon, and what to do past it.
+    assert "20 hours" in lower
+    assert "recommend a day" in lower
+    assert "invent an hourly temperature" in lower
+
+    # Bullet 4: name the date; say so out loud when the forecast is stale.
+    assert "name the date you mean" in lower
+    assert 'status is "stale"' in rules
+
+    # Bullet 5: the forecast is one input among several.
+    assert "recovery, planned distance" in lower
+    assert "mildest day is not automatically the right day" in lower
+
+
+@pytest.mark.asyncio
+async def test_plan_workout_does_not_prefetch_weather():
+    """SOW non-goal: weather is a TOOL, not a prefetch. Most planning is
+    indoor lifting, so prefetching would spend provider budget and context
+    tokens on every planning turn to answer a question most turns never
+    ask. _FakeSession answers unknown tool names with "[]" and records
+    nothing, so only a capturing session can catch a prefetch added here.
+    """
+    from typing import Any
+
+    captured: dict[str, Any] = {}
+
+    class _CaptureSession:
+        async def call_tool(self, name: str, args: dict):
+            captured[name] = args
+            return _FakeMCPResult("[]")
+
+    _rules, _data, failed = await IntentRegistry.run(
+        "plan_workout", _CaptureSession(), "America/Denver"
+    )
+    assert failed is False
+    assert "get_weather_forecast" not in captured
+    assert set(captured) == {"list_exercises", "list_workouts"}

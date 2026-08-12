@@ -72,7 +72,17 @@ def test_inject_timezone_into_get_daily_macros():
     assert out["timezone"] == "America/Denver"
 
 
-def test_non_nutrition_tool_passes_through_unchanged():
+def test_inject_timezone_into_get_weather_forecast():
+    from prog_strength_agent.model_harness import _maybe_inject_timezone
+
+    out = _maybe_inject_timezone(
+        "get_weather_forecast", {"place": "Boulder"}, "America/Denver"
+    )
+    assert out["timezone"] == "America/Denver"
+    assert out["place"] == "Boulder"
+
+
+def test_tool_outside_tz_aware_set_passes_through_unchanged():
     from prog_strength_agent.model_harness import _maybe_inject_timezone
 
     out = _maybe_inject_timezone(
@@ -97,6 +107,17 @@ def test_model_supplied_timezone_not_overwritten():
     out = _maybe_inject_timezone(
         "get_daily_macros",
         {"date": "2026-06-03", "timezone": "Europe/London"},
+        "America/Denver",
+    )
+    assert out["timezone"] == "Europe/London"
+
+
+def test_model_supplied_timezone_not_overwritten_for_weather():
+    from prog_strength_agent.model_harness import _maybe_inject_timezone
+
+    out = _maybe_inject_timezone(
+        "get_weather_forecast",
+        {"timezone": "Europe/London"},
         "America/Denver",
     )
     assert out["timezone"] == "Europe/London"

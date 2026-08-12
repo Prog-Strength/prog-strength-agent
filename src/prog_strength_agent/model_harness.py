@@ -76,11 +76,17 @@ async def build_intent_aware_prompt(
 # follow-ups.
 MAX_TOOL_LOOP = 8
 
-# Tools that accept a `timezone` arg for day-boundary math (nutrition
-# day rollups and the training snapshot's local week). The harness
-# auto-injects the user's client_timezone into these calls so the model
-# never has to thread it through itself.
-_TZ_AWARE_TOOLS = {"list_nutrition_log", "get_daily_macros", "get_training_snapshot"}
+# Tools that accept a `timezone` arg for local-time math (nutrition day
+# rollups, the training snapshot's local week, the weather forecast's
+# local hours and days). The harness auto-injects the user's
+# client_timezone into these calls so the model never has to thread it
+# through itself.
+_TZ_AWARE_TOOLS = {
+    "list_nutrition_log",
+    "get_daily_macros",
+    "get_training_snapshot",
+    "get_weather_forecast",
+}
 
 
 def _batch_item_count(name: str, block_input: Any) -> int | None:
@@ -101,8 +107,8 @@ def _maybe_inject_timezone(
     client_timezone: str | None,
 ) -> dict[str, Any]:
     """Return tool_input with the user's timezone injected when the call
-    is a nutrition tool, the model didn't already supply `timezone`, and
-    a client_timezone is known.
+    is a timezone-aware tool (see `_TZ_AWARE_TOOLS`), the model didn't
+    already supply `timezone`, and a client_timezone is known.
 
     Pure + side-effect-free on the input dict (returns a new dict) so the
     call site can record the FINAL args in telemetry and the behavior is
@@ -410,8 +416,8 @@ class ModelHarness:
                     tool_started = datetime.now(UTC)
                     tool_start_ms = now_ms()
                     tool_error: str | None = None
-                    # Auto-inject the user's timezone into nutrition tool
-                    # calls so the model never has to pass it. tool_input
+                    # Auto-inject the user's timezone into timezone-aware
+                    # tool calls so the model never has to pass it. tool_input
                     # is the FINAL args (post-injection) — used both for
                     # the MCP call and the telemetry record below.
                     tool_input = _maybe_inject_timezone(
