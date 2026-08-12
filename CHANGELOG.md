@@ -1,3 +1,10 @@
+# [0.32.0](https://github.com/Prog-Strength/prog-strength-agent/compare/v0.31.0...v0.32.0) (2026-08-12)
+
+
+### Features
+
+* **agent:** teach plan_workout to read the weather forecast ([#26](https://github.com/Prog-Strength/prog-strength-agent/issues/26)) ([befa2f4](https://github.com/Prog-Strength/prog-strength-agent/commit/befa2f4389af4fbd44b7d639e0fee385c7739b73))
+
 # [0.31.0](https://github.com/Prog-Strength/prog-strength-agent/compare/v0.30.0...v0.31.0) (2026-08-02)
 
 
